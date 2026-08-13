@@ -57,6 +57,25 @@ button {
   cursor: pointer;
   white-space: nowrap;
 }
+
+#project {
+  appearance: none;
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font: inherit;
+  padding: 5px 24px 5px 10px;
+  max-width: 180px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238792a8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+#project:hover { border-color: var(--accent); }
+
+#projectbar button { color: var(--muted); }
+#projectbar button:hover { color: var(--fg); }
 button:hover { background: var(--panel-2); }
 button:disabled { opacity: 0.4; cursor: default; }
 button.active {

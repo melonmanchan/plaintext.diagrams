@@ -3,12 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>asciidraw — boxes, arrows, text → ASCII</title>
+<title>vibedraw — boxes, arrows, text → ASCII</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header id="toolbar">
-  <div class="brand">ascii<span>draw</span></div>
+  <div class="brand">vibe<span>draw</span></div>
+  <div class="group" id="projectbar">
+    <select id="project" title="Switch project"></select>
+    <button id="proj-new" title="New project">New</button>
+    <button id="proj-rename" title="Rename current project">Rename</button>
+    <button id="proj-delete" title="Delete current project">Delete</button>
+  </div>
   <div class="group" id="tools">
     <button data-tool="select" title="Select / move / resize (V)">⬚ Select <kbd>V</kbd></button>
     <button data-tool="box" title="Draw box (B)">▭ Box <kbd>B</kbd></button>

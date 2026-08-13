@@ -1,7 +1,7 @@
 'use strict';
 
 /* ============================================================
- * asciidraw — grid-first diagram editor.
+ * vibedraw — grid-first diagram editor.
  * Everything lives on a character grid; the same rasterizer
  * paints the canvas and produces the ASCII export.
  * ============================================================ */
@@ -10,7 +10,9 @@
 const CW = 10, CH = 18;            // cell size, px
 const COLS = 200, ROWS = 100;      // world size, cells
 const FONT = '15px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
-const SAVE_KEY = 'asciidraw-v1';
+const STORE_INDEX = 'vibedraw:index';
+const DOC_KEY = (id) => 'vibedraw:doc:' + id;
+const LEGACY_KEY = 'asciidraw-v1';
 
 const PRI = { boxfill: 1, boxborder: 2, line: 3, head: 4, text: 5 };
 
@@ -76,18 +78,90 @@ function redo() {
   save(); render();
 }
 
+/* ---------- projects ---------- */
+let projects = [];        // [{ id, name }]
+let currentProject = null;
+
+const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const projectName = () => projects.find((p) => p.id === currentProject)?.name || 'diagram';
+
 function save() {
-  try { localStorage.setItem(SAVE_KEY, snapshot()); } catch { /* private mode */ }
-}
-function load() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return false;
-    const s = JSON.parse(raw);
-    if (!s || !Array.isArray(s.shapes)) return false;
-    state = s;
-    return true;
-  } catch { return false; }
+    localStorage.setItem(DOC_KEY(currentProject), snapshot());
+    localStorage.setItem(STORE_INDEX, JSON.stringify({ projects, current: currentProject }));
+  } catch { /* private mode / quota */ }
+}
+
+function loadDoc(id) {
+  try {
+    const s = JSON.parse(localStorage.getItem(DOC_KEY(id)));
+    return s && Array.isArray(s.shapes) ? s : null;
+  } catch { return null; }
+}
+
+function resetView() {
+  selection = new Set();
+  hoverId = null;
+  undoStack = [];
+  redoStack = [];
+  drag = null;
+}
+
+function switchProject(id) {
+  if (editing) commitEdit();
+  if (!projects.some((p) => p.id === id)) return;
+  currentProject = id;
+  state = loadDoc(id) || { seq: 1, shapes: [] };
+  resetView();
+  save();
+  updateProjectBar();
+  render();
+}
+
+function newProject() {
+  if (editing) commitEdit();
+  const name = (prompt('Project name', 'Untitled ' + (projects.length + 1)) || '').trim();
+  if (!name) return;
+  const p = { id: genId(), name };
+  projects.push(p);
+  currentProject = p.id;
+  state = { seq: 1, shapes: [] };
+  resetView();
+  save();
+  updateProjectBar();
+  render();
+}
+
+function renameProject() {
+  const p = projects.find((pr) => pr.id === currentProject);
+  if (!p) return;
+  const name = (prompt('Project name', p.name) || '').trim();
+  if (!name) return;
+  p.name = name;
+  save();
+  updateProjectBar();
+}
+
+function deleteProject() {
+  const p = projects.find((pr) => pr.id === currentProject);
+  if (!p || !confirm(`Delete project "${p.name}" and its diagram?`)) return;
+  try { localStorage.removeItem(DOC_KEY(p.id)); } catch { /* ignore */ }
+  projects = projects.filter((pr) => pr.id !== p.id);
+  if (!projects.length) projects.push({ id: genId(), name: 'Untitled' });
+  switchProject(projects[0].id);
+}
+
+function updateProjectBar() {
+  const sel = $('#project');
+  sel.innerHTML = '';
+  for (const p of projects) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  }
+  sel.value = currentProject;
+  document.title = projectName() + ' — vibedraw';
 }
 
 /* ============================================================
@@ -455,6 +529,12 @@ function eventPos(e) {
   return { px: e.clientX - r.left, py: e.clientY - r.top };
 }
 
+// Perimeter cell of a box (arrow-start zone when the box is selected).
+function onBoxBorder(s, cx, cy) {
+  if (cx < s.x || cx >= s.x + s.w || cy < s.y || cy >= s.y + s.h) return false;
+  return cx === s.x || cx === s.x + s.w - 1 || cy === s.y || cy === s.y + s.h - 1;
+}
+
 canvas.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (editing) commitEdit();
@@ -469,6 +549,14 @@ canvas.addEventListener('mousedown', (e) => {
         drag = { mode: 'resize', id: sel.id, corner, orig: clone(sel), snap: snapshot(), moved: false };
         return;
       }
+    }
+    // Drag from a selected box's border starts a new arrow attached to it.
+    if (sel && sel.type === 'box' && !e.shiftKey && onBoxBorder(sel, cx, cy)) {
+      const id = uid();
+      state.shapes.push({ type: 'arrow', id, x1: cx, y1: cy, x2: cx, y2: cy, box1: sel.id, box2: null });
+      drag = { mode: 'create-arrow', id, snap: snapshot(), moved: false };
+      render();
+      return;
     }
     if (sel && sel.type === 'arrow') {
       const which = endpointAt(px, py, sel);
@@ -641,6 +729,7 @@ function updateCursor(px, py, cx, cy) {
       const c = handleAt(px, py, sel);
       if (c === 'nw' || c === 'se') cur = 'nwse-resize';
       else if (c === 'ne' || c === 'sw') cur = 'nesw-resize';
+      else if (onBoxBorder(sel, cx, cy)) cur = 'crosshair';
     }
     if (cur === 'default' && sel && sel.type === 'arrow' && endpointAt(px, py, sel)) cur = 'grab';
     const hit = shapeIdAt(cx, cy);
@@ -866,7 +955,7 @@ function downloadExport() {
   const blob = new Blob([$('#out').value + '\n'], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'diagram.txt';
+  a.download = projectName() + '.txt';
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -911,12 +1000,16 @@ $('#export').addEventListener('click', (e) => e.shiftKey ? openExport() : export
 $('#close').addEventListener('click', closeExport);
 $('#copy').addEventListener('click', copyExport);
 $('#download').addEventListener('click', downloadExport);
+$('#project').addEventListener('change', (e) => { switchProject(e.target.value); e.target.blur(); });
+$('#proj-new').addEventListener('click', newProject);
+$('#proj-rename').addEventListener('click', renameProject);
+$('#proj-delete').addEventListener('click', deleteProject);
 modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeExport(); });
 
 window.addEventListener('keydown', (e) => {
   if (editing) return;
   const t = e.target;
-  if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) {
+  if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement || t instanceof HTMLSelectElement) {
     if (e.key === 'Escape' && !modal.hidden) closeExport();
     return;
   }
@@ -992,7 +1085,28 @@ function demo() {
 }
 
 setupCanvas();
-if (!load()) demo();
+(function boot() {
+  let idx = null;
+  try { idx = JSON.parse(localStorage.getItem(STORE_INDEX)); } catch { /* corrupt index */ }
+  if (idx && Array.isArray(idx.projects) && idx.projects.length) {
+    projects = idx.projects;
+    currentProject = projects.some((p) => p.id === idx.current) ? idx.current : projects[0].id;
+    state = loadDoc(currentProject) || { seq: 1, shapes: [] };
+  } else {
+    projects = [{ id: genId(), name: 'Untitled' }];
+    currentProject = projects[0].id;
+    let legacy = null;
+    try { legacy = JSON.parse(localStorage.getItem(LEGACY_KEY)); } catch { /* ignore */ }
+    if (legacy && Array.isArray(legacy.shapes)) {
+      state = legacy;
+      try { localStorage.removeItem(LEGACY_KEY); } catch { /* ignore */ }
+    } else {
+      demo();
+    }
+    save();
+  }
+  updateProjectBar();
+})();
 hintBar.textContent = hintText(0, 0);
 render();
 
@@ -1001,5 +1115,6 @@ window.__app = {
   get state() { return state; },
   set state(s) { state = s; selection = new Set(); render(); },
   get selection() { return [...selection]; },
-  render, exportAscii, rasterize, setTool, uid,
+  get projects() { return projects; },
+  render, exportAscii, rasterize, setTool, uid, switchProject,
 };
