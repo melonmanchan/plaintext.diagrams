@@ -28,7 +28,7 @@ const COLOR = {
 // ---------- state ----------
 let state = { seq: 1, shapes: [] };
 let tool = 'select';
-let selected = null;               // shape id
+let selection = new Set();         // selected shape ids
 let hoverId = null;
 let editing = null;                // shape id being text-edited
 let drag = null;                   // active pointer interaction
@@ -54,6 +54,7 @@ const getBox = (id) => {
 };
 const snapshot = () => JSON.stringify(state);
 const clone = (o) => JSON.parse(JSON.stringify(o));
+const soleSel = () => (selection.size === 1 ? getShape([...selection][0]) : null);
 
 function pushUndo(snap) {
   undoStack.push(snap != null ? snap : snapshot());
@@ -64,14 +65,14 @@ function undo() {
   if (!undoStack.length) return;
   redoStack.push(snapshot());
   state = JSON.parse(undoStack.pop());
-  selected = hoverId = null;
+  selection = new Set(); hoverId = null;
   save(); render();
 }
 function redo() {
   if (!redoStack.length) return;
   undoStack.push(snapshot());
   state = JSON.parse(redoStack.pop());
-  selected = hoverId = null;
+  selection = new Set(); hoverId = null;
   save(); render();
 }
 
@@ -179,6 +180,34 @@ function drawArrow(s, put) {
   const a = pts[pts.length - 2], b = pts[pts.length - 1];
   const head = b.x > a.x ? '>' : b.x < a.x ? '<' : b.y > a.y ? 'v' : '^';
   put(b.x, b.y, head, s.id, PRI.head);
+
+  if (s.text) {
+    const mid = pathMidpoint(pts);
+    s.text.split('\n').forEach((line, li) => {
+      const x0 = mid.x - (line.length >> 1);
+      const y0 = mid.y + li;
+      put(x0 - 1, y0, ' ', s.id, PRI.text);
+      for (let k = 0; k < line.length; k++) put(x0 + k, y0, line[k], s.id, PRI.text);
+      put(x0 + line.length, y0, ' ', s.id, PRI.text);
+    });
+  }
+}
+
+// Cell at half the walked length of an orthogonal path.
+function pathMidpoint(pts) {
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++)
+    total += Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
+  let want = total >> 1;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+    if (want <= len) {
+      return { x: a.x + Math.sign(b.x - a.x) * want, y: a.y + Math.sign(b.y - a.y) * want };
+    }
+    want -= len;
+  }
+  return pts[0];
 }
 
 // Pick the border side facing `o`, return the cell just OUTSIDE it.
@@ -295,7 +324,7 @@ function setupCanvas() {
 
 function shapeColor(s) {
   if (!s) return COLOR.box;
-  if (s.id === selected) return COLOR.sel;
+  if (selection.has(s.id)) return COLOR.sel;
   return s.type === 'arrow' ? COLOR.arrow : s.type === 'text' ? COLOR.text : COLOR.box;
 }
 
@@ -306,12 +335,12 @@ function render() {
   ctx.fillRect(0, 0, W, H);
 
   // selection / hover backgrounds
-  if (selected != null || hoverId != null) {
+  if (selection.size || hoverId != null) {
     for (let y = 0; y < ROWS; y++)
       for (let x = 0; x < COLS; x++) {
         const sid = grid.id[y * COLS + x];
         if (!sid) continue;
-        if (sid === selected) {
+        if (selection.has(sid)) {
           ctx.fillStyle = COLOR.selBg;
           ctx.fillRect(x * CW, y * CH, CW, CH);
         } else if (sid === hoverId && tool === 'select') {
@@ -339,6 +368,15 @@ function render() {
     }
 
   drawHandles();
+
+  if (drag && drag.mode === 'marquee') {
+    const x = Math.min(drag.sx, drag.cx), y = Math.min(drag.sy, drag.cy);
+    const w = Math.abs(drag.cx - drag.sx) + 1, h = Math.abs(drag.cy - drag.sy) + 1;
+    ctx.strokeStyle = COLOR.sel;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x * CW + 0.5, y * CH + 0.5, w * CW - 1, h * CH - 1);
+    ctx.setLineDash([]);
+  }
   updateToolbar();
 }
 
@@ -352,7 +390,7 @@ function boxHandles(s) {
 }
 
 function drawHandles() {
-  const s = getShape(selected);
+  const s = soleSel();
   if (!s || editing) return;
   ctx.fillStyle = COLOR.sel;
   ctx.strokeStyle = COLOR.bg;
@@ -424,7 +462,7 @@ canvas.addEventListener('mousedown', (e) => {
   const { x: cx, y: cy } = cellAt(px, py);
 
   if (tool === 'select') {
-    const sel = getShape(selected);
+    const sel = soleSel();
     if (sel && sel.type === 'box') {
       const corner = handleAt(px, py, sel);
       if (corner) {
@@ -440,9 +478,22 @@ canvas.addEventListener('mousedown', (e) => {
       }
     }
     const hit = shapeIdAt(cx, cy);
-    selected = hit;
     if (hit) {
-      drag = { mode: 'move', id: hit, sx: cx, sy: cy, orig: clone(getShape(hit)), snap: snapshot(), moved: false };
+      if (e.shiftKey) {
+        selection.has(hit) ? selection.delete(hit) : selection.add(hit);
+      } else {
+        if (!selection.has(hit)) selection = new Set([hit]);
+        const orig = new Map();
+        for (const id of selection) {
+          const s = getShape(id);
+          if (s) orig.set(id, clone(s));
+        }
+        drag = { mode: 'move', sx: cx, sy: cy, orig, snap: snapshot(), moved: false };
+      }
+    } else {
+      const base = e.shiftKey ? new Set(selection) : new Set();
+      if (!e.shiftKey) selection = new Set();
+      drag = { mode: 'marquee', sx: cx, sy: cy, cx, cy, base, moved: false };
     }
     render();
   } else if (tool === 'box') {
@@ -459,7 +510,7 @@ canvas.addEventListener('mousedown', (e) => {
     const t = { type: 'text', id, x: cx, y: cy, text: '' };
     state.shapes.push(t);
     pushUndo(snap);
-    selected = id;
+    selection = new Set([id]);
     setTool('select');
     render();
     startEdit(t);
@@ -478,19 +529,23 @@ window.addEventListener('mousemove', (e) => {
   drag.moved = true;
 
   if (drag.mode === 'move') {
-    const s = getShape(drag.id), o = drag.orig;
     const dx = cx - drag.sx, dy = cy - drag.sy;
-    if (!s) return;
-    if (s.type === 'box') {
-      s.x = clamp(o.x + dx, 0, COLS - s.w);
-      s.y = clamp(o.y + dy, 0, ROWS - s.h);
-    } else if (s.type === 'text') {
-      s.x = clamp(o.x + dx, 0, COLS - 1);
-      s.y = clamp(o.y + dy, 0, ROWS - 1);
-    } else if (s.type === 'arrow') {
-      if (!s.box1) { s.x1 = clamp(o.x1 + dx, 0, COLS - 1); s.y1 = clamp(o.y1 + dy, 0, ROWS - 1); }
-      if (!s.box2) { s.x2 = clamp(o.x2 + dx, 0, COLS - 1); s.y2 = clamp(o.y2 + dy, 0, ROWS - 1); }
+    for (const [id, o] of drag.orig) {
+      const s = getShape(id);
+      if (s) placeFrom(s, o, dx, dy);
     }
+  } else if (drag.mode === 'marquee') {
+    drag.cx = cx; drag.cy = cy;
+    const x1 = Math.min(drag.sx, cx), x2 = Math.max(drag.sx, cx);
+    const y1 = Math.min(drag.sy, cy), y2 = Math.max(drag.sy, cy);
+    const next = new Set(drag.base);
+    if (grid)
+      for (let y = y1; y <= y2; y++)
+        for (let x = x1; x <= x2; x++) {
+          const sid = grid.id[y * COLS + x];
+          if (sid) next.add(sid);
+        }
+    selection = next;
   } else if (drag.mode === 'resize') {
     const s = getShape(drag.id), o = drag.orig;
     if (!s) return;
@@ -537,7 +592,7 @@ window.addEventListener('mouseup', () => {
   if (d.mode === 'create-box') {
     if (d.id) {
       pushUndo(d.snap);
-      selected = d.id;
+      selection = new Set([d.id]);
       setTool('select');
     }
   } else if (d.mode === 'create-arrow') {
@@ -547,10 +602,10 @@ window.addEventListener('mouseup', () => {
       state.shapes = state.shapes.filter((sh) => sh.id !== d.id);
     } else {
       pushUndo(d.snap);
-      selected = d.id;
+      selection = new Set([d.id]);
       setTool('select');
     }
-  } else if (d.moved) {
+  } else if (d.moved && d.snap) {
     pushUndo(d.snap);
   }
   save();
@@ -561,16 +616,16 @@ canvas.addEventListener('dblclick', (e) => {
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
   const s = getShape(shapeIdAt(cx, cy));
-  if (s && (s.type === 'box' || s.type === 'text')) {
-    selected = s.id;
+  if (s) {
+    selection = new Set([s.id]);
     render();
     startEdit(s);
-  } else if (!s) {
+  } else {
     const snap = snapshot();
     const t = { type: 'text', id: uid(), x: cx, y: cy, text: '' };
     state.shapes.push(t);
     pushUndo(snap);
-    selected = t.id;
+    selection = new Set([t.id]);
     render();
     startEdit(t);
   }
@@ -581,7 +636,7 @@ function updateCursor(px, py, cx, cy) {
   if (tool === 'box' || tool === 'arrow') cur = 'crosshair';
   else if (tool === 'text') cur = 'text';
   else {
-    const sel = getShape(selected);
+    const sel = soleSel();
     if (sel && sel.type === 'box') {
       const c = handleAt(px, py, sel);
       if (c === 'nw' || c === 'se') cur = 'nwse-resize';
@@ -607,13 +662,13 @@ function measureGlyph() {
   return ctx.measureText('M').width;
 }
 
-function startEdit(s) {
+function startEdit(s, seed) {
   commitEdit();
   editing = s.id;
   editSnap = snapshot();
   const ta = document.createElement('textarea');
   ta.className = 'editor';
-  ta.value = s.text || '';
+  ta.value = seed != null ? seed : (s.text || '');
   ta.style.font = FONT;
   ta.style.lineHeight = CH + 'px';
   ta.style.letterSpacing = (CW - measureGlyph()).toFixed(2) + 'px';
@@ -632,8 +687,13 @@ function startEdit(s) {
     ta.addEventListener('input', pad);
     pad();
   } else {
-    ta.style.left = s.x * CW + 'px';
-    ta.style.top = s.y * CH + 'px';
+    let ox = s.x, oy = s.y;
+    if (s.type === 'arrow') {
+      const mid = pathMidpoint(resolveArrow(s));
+      ox = mid.x; oy = mid.y;
+    }
+    ta.style.left = ox * CW + 'px';
+    ta.style.top = oy * CH + 'px';
     const fit = () => {
       const lines = ta.value.split('\n');
       const wch = Math.max(8, ...lines.map((l) => l.length)) + 2;
@@ -668,7 +728,7 @@ function commitEdit() {
     if (s.type === 'text' && !value) {
       pushUndo(editSnap);
       state.shapes = state.shapes.filter((sh) => sh.id !== s.id);
-      if (selected === s.id) selected = null;
+      selection.delete(s.id);
     } else if (changed) {
       pushUndo(editSnap);
       s.text = value;
@@ -685,7 +745,7 @@ function cancelEdit() {
   teardownEditor();
   if (s && s.type === 'text' && !(s.text || '')) {
     state.shapes = state.shapes.filter((sh) => sh.id !== s.id);
-    if (selected === s.id) selected = null;
+    selection.delete(s.id);
   }
   editSnap = null;
   render();
@@ -704,36 +764,40 @@ function teardownEditor() {
  * Commands
  * ============================================================ */
 
-function deleteSelected() {
-  const s = getShape(selected);
-  if (!s) return;
-  pushUndo();
+// Reposition `s` at `o`'s coordinates shifted by (dx, dy).
+function placeFrom(s, o, dx, dy) {
   if (s.type === 'box') {
-    for (const a of state.shapes) {
-      if (a.type !== 'arrow') continue;
-      if (a.box1 === s.id) a.box1 = null; // x1/y1 hold last resolved anchor
-      if (a.box2 === s.id) a.box2 = null;
-    }
+    s.x = clamp(o.x + dx, 0, COLS - s.w);
+    s.y = clamp(o.y + dy, 0, ROWS - s.h);
+  } else if (s.type === 'text') {
+    s.x = clamp(o.x + dx, 0, COLS - 1);
+    s.y = clamp(o.y + dy, 0, ROWS - 1);
+  } else if (s.type === 'arrow') {
+    if (!s.box1) { s.x1 = clamp(o.x1 + dx, 0, COLS - 1); s.y1 = clamp(o.y1 + dy, 0, ROWS - 1); }
+    if (!s.box2) { s.x2 = clamp(o.x2 + dx, 0, COLS - 1); s.y2 = clamp(o.y2 + dy, 0, ROWS - 1); }
   }
-  state.shapes = state.shapes.filter((sh) => sh.id !== s.id);
-  selected = null;
+}
+
+function deleteSelected() {
+  if (!selection.size) return;
+  pushUndo();
+  for (const s of state.shapes) {
+    if (s.type !== 'arrow' || selection.has(s.id)) continue;
+    if (s.box1 != null && selection.has(s.box1)) s.box1 = null; // x1/y1 hold last resolved anchor
+    if (s.box2 != null && selection.has(s.box2)) s.box2 = null;
+  }
+  state.shapes = state.shapes.filter((sh) => !selection.has(sh.id));
+  selection = new Set();
   save();
   render();
 }
 
 function nudge(dx, dy) {
-  const s = getShape(selected);
-  if (!s) return;
+  if (!selection.size) return;
   pushUndo();
-  if (s.type === 'box') {
-    s.x = clamp(s.x + dx, 0, COLS - s.w);
-    s.y = clamp(s.y + dy, 0, ROWS - s.h);
-  } else if (s.type === 'text') {
-    s.x = clamp(s.x + dx, 0, COLS - 1);
-    s.y = clamp(s.y + dy, 0, ROWS - 1);
-  } else if (s.type === 'arrow') {
-    if (!s.box1) { s.x1 = clamp(s.x1 + dx, 0, COLS - 1); s.y1 = clamp(s.y1 + dy, 0, ROWS - 1); }
-    if (!s.box2) { s.x2 = clamp(s.x2 + dx, 0, COLS - 1); s.y2 = clamp(s.y2 + dy, 0, ROWS - 1); }
+  for (const id of selection) {
+    const s = getShape(id);
+    if (s) placeFrom(s, s, dx, dy);
   }
   save();
   render();
@@ -812,9 +876,9 @@ function downloadExport() {
  * ============================================================ */
 
 const HINTS = {
-  select: 'click: select · drag: move · corners: resize · double-click: edit text · del: delete · arrows: nudge',
-  box: 'drag to draw a box, then double-click it to add a label',
-  arrow: 'drag from source to target — endpoints inside a box snap to it and follow it around',
+  select: 'click: select · shift-click / drag: multi-select · type: edit label · corners: resize · del: delete · arrows: nudge',
+  box: 'drag to draw a box, then just type to label it',
+  arrow: 'drag from source to target — endpoints inside a box snap to it · select + type to label the arrow',
   text: 'click anywhere to place free-standing text',
 };
 
@@ -824,7 +888,7 @@ function hintText(cx, cy) {
 
 function setTool(t) {
   tool = t;
-  if (t !== 'select') { selected = null; hoverId = null; }
+  if (t !== 'select') { selection = new Set(); hoverId = null; }
   updateToolbar();
   render();
 }
@@ -834,7 +898,7 @@ function updateToolbar() {
     b.classList.toggle('active', b.dataset.tool === tool));
   $('#undo').disabled = !undoStack.length;
   $('#redo').disabled = !redoStack.length;
-  $('#delete').disabled = selected == null;
+  $('#delete').disabled = !selection.size;
 }
 
 document.querySelectorAll('#tools button').forEach((b) =>
@@ -867,7 +931,39 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    selection = new Set(state.shapes.map((s) => s.id));
+    render();
+    return;
+  }
   if (mod) return;
+
+  switch (e.key) {
+    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelected(); return;
+    case 'Escape':
+      if (drag) { if (drag.snap) state = JSON.parse(drag.snap); drag = null; }
+      selection = new Set();
+      render();
+      return;
+    case 'Enter': {
+      const s = soleSel();
+      if (s) { e.preventDefault(); startEdit(s); }
+      return;
+    }
+    case 'ArrowLeft': e.preventDefault(); nudge(-1, 0); return;
+    case 'ArrowRight': e.preventDefault(); nudge(1, 0); return;
+    case 'ArrowUp': e.preventDefault(); nudge(0, -1); return;
+    case 'ArrowDown': e.preventDefault(); nudge(0, 1); return;
+  }
+
+  // Typing with a single shape selected starts label editing (draw.io style).
+  const target = soleSel();
+  if (target && e.key.length === 1) {
+    e.preventDefault();
+    startEdit(target, e.key);
+    return;
+  }
 
   switch (e.key) {
     case 'v': case 'V': setTool('select'); break;
@@ -875,21 +971,6 @@ window.addEventListener('keydown', (e) => {
     case 'a': case 'A': setTool('arrow'); break;
     case 't': case 'T': setTool('text'); break;
     case 'e': case 'E': e.shiftKey ? openExport() : exportToClipboard(); break;
-    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelected(); break;
-    case 'Escape':
-      if (drag) { state = JSON.parse(drag.snap); drag = null; }
-      selected = null;
-      render();
-      break;
-    case 'Enter': {
-      const s = getShape(selected);
-      if (s && (s.type === 'box' || s.type === 'text')) { e.preventDefault(); startEdit(s); }
-      break;
-    }
-    case 'ArrowLeft': e.preventDefault(); nudge(-1, 0); break;
-    case 'ArrowRight': e.preventDefault(); nudge(1, 0); break;
-    case 'ArrowUp': e.preventDefault(); nudge(0, -1); break;
-    case 'ArrowDown': e.preventDefault(); nudge(0, 1); break;
   }
 });
 
@@ -918,7 +999,7 @@ render();
 // test hook
 window.__app = {
   get state() { return state; },
-  set state(s) { state = s; selected = null; render(); },
-  get selected() { return selected; },
+  set state(s) { state = s; selection = new Set(); render(); },
+  get selection() { return [...selection]; },
   render, exportAscii, rasterize, setTool, uid,
 };
