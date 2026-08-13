@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>asciidraw — boxes, arrows, text → ASCII</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="toolbar">
+  <div class="brand">ascii<span>draw</span></div>
+  <div class="group" id="tools">
+    <button data-tool="select" title="Select / move / resize (V)">⬚ Select <kbd>V</kbd></button>
+    <button data-tool="box" title="Draw box (B)">▭ Box <kbd>B</kbd></button>
+    <button data-tool="arrow" title="Draw arrow (A)">→ Arrow <kbd>A</kbd></button>
+    <button data-tool="text" title="Place text (T)">T Text <kbd>T</kbd></button>
+  </div>
+  <div class="group">
+    <button id="undo" title="Undo (Ctrl+Z)">↩ Undo</button>
+    <button id="redo" title="Redo (Ctrl+Shift+Z)">↪ Redo</button>
+    <button id="delete" title="Delete selection (Del)">✕ Delete</button>
+    <button id="clear" title="Clear canvas">Clear</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="export" class="primary" title="Export diagram as ASCII (E)">Export ASCII <kbd>E</kbd></button>
+</header>
+
+<main id="stage">
+  <div id="world">
+    <canvas id="canvas"></canvas>
+  </div>
+</main>
+
+<footer id="hint"></footer>
+
+<div id="modal" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <b>ASCII export</b>
+      <button id="close" title="Close (Esc)">×</button>
+    </div>
+    <textarea id="out" readonly spellcheck="false" wrap="off"></textarea>
+    <div class="sheet-foot">
+      <span id="stats"></span>
+      <button id="download">Download .txt</button>
+      <button id="copy" class="primary">Copy to clipboard</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
