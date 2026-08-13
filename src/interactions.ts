@@ -44,6 +44,19 @@ function endpointAt(px: number, py: number, s: ArrowShape): 1 | 2 | null {
   return null;
 }
 
+/** Default-sized empty box centered on a cell, clamped to the canvas. */
+function quickBox(cx: number, cy: number): BoxShape {
+  const w = 12, h = 5;
+  return {
+    type: 'box',
+    id: uid(),
+    x: clamp(cx - (w >> 1), 0, COLS - w),
+    y: clamp(cy - (h >> 1), 0, ROWS - h),
+    w, h,
+    text: '',
+  };
+}
+
 function onMouseDown(e: MouseEvent): void {
   if (e.button !== 0 && e.button !== 1) return;
   if (app.editing != null) commitEdit();
@@ -53,16 +66,8 @@ function onMouseDown(e: MouseEvent): void {
   // Middle click or Cmd/Ctrl+click: drop a new box centered on the cursor, in any tool.
   if (e.button === 1 || (e.button === 0 && (e.metaKey || e.ctrlKey))) {
     e.preventDefault(); // suppress autoscroll / native modifier behavior
-    const w = 12, h = 5;
     const snap = snapshot();
-    const b: BoxShape = {
-      type: 'box',
-      id: uid(),
-      x: clamp(cx - (w >> 1), 0, COLS - w),
-      y: clamp(cy - (h >> 1), 0, ROWS - h),
-      w, h,
-      text: '',
-    };
+    const b = quickBox(cx, cy);
     app.doc.shapes.push(b);
     pushUndo(snap);
     app.selection = new Set([b.id]);
@@ -232,12 +237,20 @@ function onMouseUp(): void {
   } else if (d.mode === 'create-arrow') {
     const s = getShape(d.id);
     const degenerate =
-      !d.moved || (s && s.type === 'arrow' && s.x1 === s.x2 && s.y1 === s.y2 && !s.box2);
+      !d.moved || !s || s.type !== 'arrow' || (s.x1 === s.x2 && s.y1 === s.y2 && !s.box2);
     if (degenerate) {
       app.doc.shapes = app.doc.shapes.filter((sh) => sh.id !== d.id);
     } else {
       pushUndo(d.snap);
-      app.selection = new Set([d.id]);
+      if (s.box1 != null && s.box2 == null) {
+        // Box-sourced arrow dropped on empty canvas: create the target box.
+        const b = quickBox(s.x2, s.y2);
+        app.doc.shapes.push(b);
+        s.box2 = b.id;
+        app.selection = new Set([b.id]); // select the new box → type to label it
+      } else {
+        app.selection = new Set([d.id]);
+      }
       setTool('select');
     }
   } else if (d.moved && d.mode !== 'marquee') {
