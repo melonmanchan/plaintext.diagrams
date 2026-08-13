@@ -764,18 +764,38 @@ function openExport() {
 
 function closeExport() { modal.hidden = true; }
 
-async function copyExport() {
-  const text = $('#out').value;
+async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    $('#out').select();
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
     document.execCommand('copy');
+    ta.remove();
   }
-  const btn = $('#copy');
-  const old = btn.textContent;
-  btn.textContent = 'Copied ✓';
-  setTimeout(() => { btn.textContent = old; }, 1200);
+}
+
+function flash(btn, label) {
+  const old = btn.innerHTML;
+  btn.textContent = label;
+  setTimeout(() => { btn.innerHTML = old; }, 1200);
+}
+
+// Primary export: straight to clipboard. Shift+click previews in the modal.
+async function exportToClipboard() {
+  const text = exportAscii();
+  if (!text) { flash($('#export'), 'Canvas empty'); return; }
+  await copyText(text);
+  flash($('#export'), 'Copied ✓');
+}
+
+async function copyExport() {
+  await copyText($('#out').value);
+  flash($('#copy'), 'Copied ✓');
 }
 
 function downloadExport() {
@@ -823,7 +843,7 @@ $('#undo').addEventListener('click', undo);
 $('#redo').addEventListener('click', redo);
 $('#delete').addEventListener('click', deleteSelected);
 $('#clear').addEventListener('click', clearAll);
-$('#export').addEventListener('click', openExport);
+$('#export').addEventListener('click', (e) => e.shiftKey ? openExport() : exportToClipboard());
 $('#close').addEventListener('click', closeExport);
 $('#copy').addEventListener('click', copyExport);
 $('#download').addEventListener('click', downloadExport);
@@ -854,7 +874,7 @@ window.addEventListener('keydown', (e) => {
     case 'b': case 'B': case 'r': case 'R': setTool('box'); break;
     case 'a': case 'A': setTool('arrow'); break;
     case 't': case 'T': setTool('text'); break;
-    case 'e': case 'E': openExport(); break;
+    case 'e': case 'E': e.shiftKey ? openExport() : exportToClipboard(); break;
     case 'Delete': case 'Backspace': e.preventDefault(); deleteSelected(); break;
     case 'Escape':
       if (drag) { state = JSON.parse(drag.snap); drag = null; }
