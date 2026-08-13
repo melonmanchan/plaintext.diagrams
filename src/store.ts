@@ -1,0 +1,85 @@
+import { DOC_KEY, STORE_INDEX } from './constants';
+import type { DocState, Drag, Project, Raster, Shape, Tool } from './types';
+
+/* ============================================================
+ * Central mutable state + persistence. No DOM, no rendering —
+ * callers re-render after mutating.
+ * ============================================================ */
+
+export const app = {
+  doc: { seq: 1, shapes: [] } as DocState,
+  tool: 'select' as Tool,
+  selection: new Set<number>(),
+  hoverId: null as number | null,
+  /** Shape id under inline text edit (editor.ts owns the textarea). */
+  editing: null as number | null,
+  drag: null as Drag | null,
+  /** Last raster; render.ts writes it, hit-testing reads it. */
+  grid: null as Raster | null,
+  undoStack: [] as string[],
+  redoStack: [] as string[],
+  projects: [] as Project[],
+  currentProject: '',
+};
+
+export const uid = () => app.doc.seq++;
+
+export const getShape = (id: number): Shape | null =>
+  app.doc.shapes.find((s) => s.id === id) ?? null;
+
+/** The single selected shape, or null when 0 or 2+ are selected. */
+export const soleSel = (): Shape | null =>
+  app.selection.size === 1 ? getShape(app.selection.values().next().value as number) : null;
+
+export const snapshot = () => JSON.stringify(app.doc);
+
+export function pushUndo(snap?: string): void {
+  app.undoStack.push(snap ?? snapshot());
+  if (app.undoStack.length > 200) app.undoStack.shift();
+  app.redoStack.length = 0;
+}
+
+export function undo(): void {
+  if (!app.undoStack.length) return;
+  app.redoStack.push(snapshot());
+  app.doc = JSON.parse(app.undoStack.pop()!);
+  app.selection = new Set();
+  app.hoverId = null;
+  save();
+}
+
+export function redo(): void {
+  if (!app.redoStack.length) return;
+  app.undoStack.push(snapshot());
+  app.doc = JSON.parse(app.redoStack.pop()!);
+  app.selection = new Set();
+  app.hoverId = null;
+  save();
+}
+
+/* ---------- persistence ---------- */
+
+export function save(): void {
+  try {
+    localStorage.setItem(DOC_KEY(app.currentProject), snapshot());
+    localStorage.setItem(STORE_INDEX, JSON.stringify({ projects: app.projects, current: app.currentProject }));
+  } catch { /* private mode / quota */ }
+}
+
+export function loadDoc(id: string): DocState | null {
+  try {
+    const s = JSON.parse(localStorage.getItem(DOC_KEY(id)) ?? 'null');
+    return s && Array.isArray(s.shapes) ? s : null;
+  } catch { return null; }
+}
+
+export const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/** Reset per-document view state (selection, hover, undo, drag). */
+export function resetView(): void {
+  app.selection = new Set();
+  app.hoverId = null;
+  app.undoStack = [];
+  app.redoStack = [];
+  app.drag = null;
+}
