@@ -66,6 +66,14 @@ export function startEdit(s: Shape, seed?: string): void {
   });
   ta.addEventListener('blur', () => commitEdit());
 
+  // The overlay is laid out in world px; scale it to match the zoomed canvas.
+  if (app.zoom !== 1) {
+    ta.style.transformOrigin = '0 0';
+    ta.style.transform = `scale(${app.zoom})`;
+    ta.style.left = parseFloat(ta.style.left) * app.zoom + 'px';
+    ta.style.top = parseFloat(ta.style.top) * app.zoom + 'px';
+  }
+
   document.querySelector('#world')!.appendChild(ta);
   editorEl = ta;
   ta.focus();

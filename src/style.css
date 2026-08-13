@@ -18,7 +18,8 @@ html, body {
   background: var(--bg);
   color: var(--fg);
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  overflow: hidden;
+  overflow: hidden; /* fallback */
+  overflow: clip;   /* blocks focus/programmatic body scroll */
 }
 
 body { display: flex; flex-direction: column; }
@@ -76,6 +77,10 @@ button {
 
 #projectbar button { color: var(--muted); }
 #projectbar button:hover { color: var(--fg); }
+
+#zoomer button { color: var(--muted); }
+#zoomer button:hover { color: var(--fg); }
+#zoom-reset { min-width: 56px; font-variant-numeric: tabular-nums; }
 button:hover { background: var(--panel-2); }
 button:disabled { opacity: 0.4; cursor: default; }
 button.active {

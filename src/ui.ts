@@ -1,9 +1,12 @@
 import { clearAll, deleteSelected, nudge } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { exportAscii } from './export';
-import { render, updateToolbar } from './render';
-import { app, genId, loadDoc, pushUndo, redo, resetView, save, soleSel, undo } from './store';
-import type { Tool } from './types';
+import { parseAscii } from './import';
+import { render, setupCanvas, updateToolbar } from './render';
+import { app, genId, loadDoc, pushUndo, redo, resetView, save, soleSel, uid, undo } from './store';
+import type { Shape, Tool } from './types';
+import { clamp } from './util';
+import { COLS, ROWS } from './constants';
 
 /* ============================================================
  * Toolbar, project bar, export modal, keyboard shortcuts.
@@ -145,6 +148,81 @@ function closeExport(): void {
   $('#modal').hidden = true;
 }
 
+/* ---------- zoom ---------- */
+
+export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
+  z = clamp(z, 0.5, 2);
+  if (z === app.zoom) return;
+  if (app.editing != null) commitEdit();
+  const stage = $('#stage');
+  // Keep the world point under the pivot (or viewport center) stationary.
+  const sx = pivot?.sx ?? stage.clientWidth / 2;
+  const sy = pivot?.sy ?? stage.clientHeight / 2;
+  const wx = (stage.scrollLeft + sx) / app.zoom;
+  const wy = (stage.scrollTop + sy) / app.zoom;
+  app.zoom = z;
+  setupCanvas();
+  render();
+  stage.scrollLeft = wx * z - sx;
+  stage.scrollTop = wy * z - sy;
+  $('#zoom-reset').textContent = Math.round(z * 100) + '%';
+}
+
+/* ---------- paste: ASCII → shapes ---------- */
+
+function onPaste(e: ClipboardEvent): void {
+  if (app.editing != null) return;
+  const t = e.target;
+  if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) return;
+  if (!$('#modal').hidden) return;
+  const text = e.clipboardData?.getData('text/plain') ?? '';
+  if (!text.trim()) return;
+  e.preventDefault();
+  const parsed: Shape[] = parseAscii(text);
+  if (!parsed.length) return;
+
+  // Remap the parser's local ids to fresh document ids.
+  const idMap = new Map<number, number>();
+  for (const s of parsed) idMap.set(s.id, uid());
+  for (const s of parsed) {
+    s.id = idMap.get(s.id)!;
+    if (s.type === 'arrow') {
+      s.box1 = s.box1 != null ? idMap.get(s.box1) ?? null : null;
+      s.box2 = s.box2 != null ? idMap.get(s.box2) ?? null : null;
+    }
+  }
+
+  // Translate content to the paste anchor (cursor cell) and clamp on-canvas.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of parsed) {
+    if (s.type === 'box') {
+      minX = Math.min(minX, s.x); minY = Math.min(minY, s.y);
+      maxX = Math.max(maxX, s.x + s.w - 1); maxY = Math.max(maxY, s.y + s.h - 1);
+    } else if (s.type === 'text') {
+      const ls = s.text.split('\n');
+      minX = Math.min(minX, s.x); minY = Math.min(minY, s.y);
+      maxX = Math.max(maxX, s.x + Math.max(...ls.map((l) => l.length)) - 1);
+      maxY = Math.max(maxY, s.y + ls.length - 1);
+    } else {
+      minX = Math.min(minX, s.x1, s.x2); minY = Math.min(minY, s.y1, s.y2);
+      maxX = Math.max(maxX, s.x1, s.x2); maxY = Math.max(maxY, s.y1, s.y2);
+    }
+  }
+  const anchor = app.mouseCell ?? { x: 2, y: 2 };
+  const dx = clamp(anchor.x - minX, -minX, Math.max(-minX, COLS - 1 - maxX));
+  const dy = clamp(anchor.y - minY, -minY, Math.max(-minY, ROWS - 1 - maxY));
+  for (const s of parsed) {
+    if (s.type === 'arrow') { s.x1 += dx; s.y1 += dy; s.x2 += dx; s.y2 += dy; }
+    else { s.x += dx; s.y += dy; }
+  }
+
+  pushUndo();
+  app.doc.shapes.push(...parsed);
+  app.selection = new Set(parsed.map((s) => s.id));
+  setTool('select');
+  save();
+  render();
+}
 /* ---------- keyboard ---------- */
 
 function onKeyDown(e: KeyboardEvent): void {
@@ -173,10 +251,24 @@ function onKeyDown(e: KeyboardEvent): void {
     render();
     return;
   }
+  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(app.zoom * 1.5); return; }
+  if (mod && e.key === '-') { e.preventDefault(); setZoom(app.zoom / 1.5); return; }
+  if (mod && e.key === '0') { e.preventDefault(); setZoom(1); return; }
   if (mod && e.key.toLowerCase() === 'a') {
     e.preventDefault();
     app.selection = new Set(app.doc.shapes.map((s) => s.id));
     render();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === 'c') {
+    if (!app.selection.size) return; // let the browser handle plain copy
+    e.preventDefault();
+    const picked = app.doc.shapes.filter((s) => app.selection.has(s.id));
+    const text = exportAscii(picked);
+    if (text) {
+      void copyText(text);
+      flash($('#export'), 'Copied selection ✓');
+    }
     return;
   }
   if (mod) return;
@@ -241,6 +333,15 @@ export function initUi(): void {
     if ((e as MouseEvent).shiftKey) openExport();
     else void exportToClipboard();
   });
+  $('#zoom-in').addEventListener('click', () => setZoom(app.zoom * 1.5));
+  $('#zoom-out').addEventListener('click', () => setZoom(app.zoom / 1.5));
+  $('#zoom-reset').addEventListener('click', () => setZoom(1));
+  $('#stage').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps panning
+    e.preventDefault();
+    const r = $('#stage').getBoundingClientRect();
+    setZoom(app.zoom * Math.pow(1.004, -e.deltaY), { sx: e.clientX - r.left, sy: e.clientY - r.top });
+  }, { passive: false });
   $('#close').addEventListener('click', closeExport);
   $('#copy').addEventListener('click', async () => {
     await copyText($<HTMLTextAreaElement>('#out').value);
@@ -266,6 +367,7 @@ export function initUi(): void {
   $('#modal').addEventListener('mousedown', (e) => {
     if (e.target === $('#modal')) closeExport();
   });
+  window.addEventListener('paste', onPaste);
   window.addEventListener('keydown', onKeyDown);
   $('#hint').textContent = hintText(0, 0);
 }

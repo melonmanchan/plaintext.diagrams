@@ -20,6 +20,10 @@ export const app = {
   redoStack: [] as string[],
   projects: [] as Project[],
   currentProject: '',
+  /** View zoom factor; world px × zoom = screen px. */
+  zoom: 1,
+  /** Last hovered cell — paste anchor. */
+  mouseCell: null as { x: number; y: number } | null,
 };
 
 export const uid = () => app.doc.seq++;

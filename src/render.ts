@@ -16,15 +16,19 @@ export const ctx = canvas.getContext('2d')!;
 let dotPattern: CanvasPattern | null = null;
 
 export function setupCanvas(): void {
+  const z = app.zoom;
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width = W + 'px';
-  canvas.style.height = H + 'px';
+  // Cap backing-store density so high zoom doesn't allocate a huge bitmap.
+  const bs = Math.min(dpr, 2.5 / z);
+  canvas.width = Math.round(W * z * bs);
+  canvas.height = Math.round(H * z * bs);
+  canvas.style.width = W * z + 'px';
+  canvas.style.height = H * z + 'px';
   const world = document.querySelector<HTMLElement>('#world')!;
-  world.style.width = W + 'px';
-  world.style.height = H + 'px';
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  world.style.width = W * z + 'px';
+  world.style.height = H * z + 'px';
+  // Drawing code stays in world (cell-px) coordinates.
+  ctx.setTransform(z * bs, 0, 0, z * bs, 0, 0);
 
   const pc = document.createElement('canvas');
   pc.width = CW;

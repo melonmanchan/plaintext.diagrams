@@ -22,7 +22,8 @@ function cellAt(px: number, py: number): { x: number; y: number } {
 
 function eventPos(e: MouseEvent): { px: number; py: number } {
   const r = canvas.getBoundingClientRect();
-  return { px: e.clientX - r.left, py: e.clientY - r.top };
+  // Map screen px to world (cell-px) space.
+  return { px: (e.clientX - r.left) / app.zoom, py: (e.clientY - r.top) / app.zoom };
 }
 
 function shapeIdAt(cx: number, cy: number): number | null {
@@ -146,6 +147,7 @@ function onMouseMove(e: MouseEvent): void {
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
   document.querySelector('#hint')!.textContent = hintText(cx, cy);
+  app.mouseCell = { x: cx, y: cy };
 
   const d = app.drag;
   if (!d) {
