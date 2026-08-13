@@ -13,7 +13,7 @@ const $ = <T extends Element = HTMLElement>(sel: string): T =>
   document.querySelector<T>(sel)!;
 
 const HINTS: Record<Tool, string> = {
-  select: 'click: select · shift-click / drag: multi-select · middle-click: new box · type: edit label · del: delete',
+  select: 'click: select · shift-click / drag: multi-select · cmd-click / middle-click: new box · type: edit label · del: delete',
   box: 'drag to draw a box, then just type to label it',
   arrow: 'drag from source to target — endpoints inside a box snap to it · select + type to label the arrow',
   text: 'click anywhere to place free-standing text',

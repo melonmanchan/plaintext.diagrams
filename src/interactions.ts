@@ -50,9 +50,9 @@ function onMouseDown(e: MouseEvent): void {
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
 
-  // Middle click: drop a new box centered on the cursor, in any tool.
-  if (e.button === 1) {
-    e.preventDefault(); // suppress autoscroll
+  // Middle click or Cmd/Ctrl+click: drop a new box centered on the cursor, in any tool.
+  if (e.button === 1 || (e.button === 0 && (e.metaKey || e.ctrlKey))) {
+    e.preventDefault(); // suppress autoscroll / native modifier behavior
     const w = 12, h = 5;
     const snap = snapshot();
     const b: BoxShape = {
@@ -292,6 +292,7 @@ function updateCursor(px: number, py: number, cx: number, cy: number): void {
 
 export function initInteractions(): void {
   canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('dblclick', onDblClick);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);

@@ -75,9 +75,11 @@ export function placeFrom(s: Shape, o: Shape, dx: number, dy: number, shapes: Sh
 /** Smallest box that shows its whole label (never below 3×3). */
 export function boxMinSize(s: BoxShape): [number, number] {
   if (!s.text) return [3, 3];
+  // Borders (2) plus breathing room between label and border.
+  const padX = 2;
   const lines = s.text.split('\n');
   return [
-    Math.max(3, Math.max(...lines.map((l) => l.length)) + 2),
+    Math.max(3, Math.max(...lines.map((l) => l.length)) + 2 + padX * 2),
     Math.max(3, lines.length + 2),
   ];
 }

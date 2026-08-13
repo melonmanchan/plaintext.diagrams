@@ -6,15 +6,15 @@ const box = (id: number, x: number, y: number, w: number, h: number, text = ''):
   ({ type: 'box', id, x, y, w, h, text });
 
 describe('boxMinSize / fitBoxToLabel', () => {
-  it('computes minimum size from the label', () => {
-    expect(boxMinSize(box(1, 0, 0, 3, 3, 'hello\nhi'))).toEqual([7, 4]);
+  it('computes minimum size from the label with 2 cells of side padding', () => {
+    expect(boxMinSize(box(1, 0, 0, 3, 3, 'hello\nhi'))).toEqual([11, 4]);
     expect(boxMinSize(box(1, 0, 0, 3, 3))).toEqual([3, 3]);
   });
 
   it('grows an undersized box but never shrinks', () => {
     const s = box(1, 0, 0, 3, 3, 'longlabel');
     fitBoxToLabel(s);
-    expect(s.w).toBe(11);
+    expect(s.w).toBe(15);
     expect(s.h).toBe(3);
     const roomy = box(2, 0, 0, 20, 9, 'x');
     fitBoxToLabel(roomy);
