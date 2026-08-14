@@ -1,5 +1,5 @@
 import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
-import type { BoxShape, Corner, GroupShape, Guide, Shape } from './types';
+import type { BoxShape, Corner, GroupShape, Guide, LaneSlot, Shape } from './types';
 import { clamp } from './util';
 
 /* ============================================================
@@ -109,6 +109,42 @@ export function laneBounds(g: GroupShape): number[] {
   const n = g.lanes?.length ?? 0;
   if (n < 2) return [];
   return Array.from({ length: n - 1 }, (_, i) => g.x + Math.round(((i + 1) * (g.w - 1)) / n));
+}
+
+/** Capture which lane each contained shape occupies (slot-keeping resize). */
+export function captureLaneSlots(g: GroupShape, shapes: Shape[]): LaneSlot[] {
+  if ((g.lanes?.length ?? 0) < 2) return [];
+  const edges = [g.x, ...laneBounds(g), g.x + g.w - 1];
+  const contentTop = groupTopRow(g) + 3;
+  const out: LaneSlot[] = [];
+  for (const s of shapes) {
+    if (s.id === g.id || s.type === 'arrow' || !insideGroup(s, g)) continue;
+    const cx = s.type === 'text' ? s.x : s.x + (s.w >> 1);
+    let lane = 0;
+    while (lane < edges.length - 2 && cx > edges[lane + 1]) lane++;
+    out.push({ id: s.id, lane, offX: s.x - (edges[lane] + 1), offY: s.y - contentTop });
+  }
+  return out;
+}
+
+/** Re-place captured shapes inside their lanes after the group resized. */
+export function applyLaneSlots(g: GroupShape, shapes: Shape[], slots: LaneSlot[]): void {
+  if ((g.lanes?.length ?? 0) < 2) return;
+  const edges = [g.x, ...laneBounds(g), g.x + g.w - 1];
+  const contentTop = groupTopRow(g) + 3;
+  const bottom = g.y + g.h - 1;
+  for (const slot of slots) {
+    const s = shapes.find((sh) => sh.id === slot.id);
+    if (!s || s.type === 'arrow' || slot.lane >= edges.length - 1) continue;
+    const laneStart = edges[slot.lane] + 1;
+    const laneEnd = edges[slot.lane + 1] - 1;
+    const sw = s.type === 'text'
+      ? Math.max(...(s.text || ' ').split('\n').map((l) => l.length))
+      : s.w;
+    const sh2 = s.type === 'text' ? (s.text || ' ').split('\n').length : s.h;
+    s.x = clamp(laneStart + slot.offX, laneStart, Math.max(laneStart, laneEnd - sw + 1));
+    s.y = clamp(contentTop + slot.offY, contentTop, Math.max(contentTop, bottom - sh2));
+  }
 }
 
 /**

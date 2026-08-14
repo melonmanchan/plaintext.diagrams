@@ -2,7 +2,7 @@ import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
 import { cycleArrowHeads } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { render } from './render';
-import { boxAt, boxAttachAt, boxHandles, boxMinSize, groupMinSize, groupTopRow, insideGroup, laneBounds, onBoxBorder, placeFrom, snapBox } from './shapes';
+import { applyLaneSlots, boxAt, boxAttachAt, boxHandles, boxMinSize, captureLaneSlots, groupMinSize, groupTopRow, insideGroup, laneBounds, onBoxBorder, placeFrom, snapBox } from './shapes';
 import { app, getShape, pushUndo, save, snapshot, soleSel, uid } from './store';
 import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, TextShape } from './types';
 import { hintText, setTool } from './ui';
@@ -97,7 +97,11 @@ function onMouseDown(e: MouseEvent): void {
     if (sel && (sel.type === 'box' || sel.type === 'group')) {
       const corner = handleAt(px, py, sel);
       if (corner) {
-        app.drag = { mode: 'resize', id: sel.id, corner, orig: clone(sel), snap: snapshot(), moved: false };
+        app.drag = {
+          mode: 'resize', id: sel.id, corner, orig: clone(sel), snap: snapshot(), moved: false,
+          // swimlane groups keep their contents in their lanes while resizing
+          slots: sel.type === 'group' ? captureLaneSlots(sel, app.doc.shapes) : undefined,
+        };
         return;
       }
     }
@@ -224,6 +228,7 @@ function onMouseMove(e: MouseEvent): void {
     s.y = clamp(y1, 0, MAX_ROWS - minH);
     s.w = x2 - s.x + 1;
     s.h = y2 - s.y + 1;
+    if (s.type === 'group' && d.slots?.length) applyLaneSlots(s, app.doc.shapes, d.slots);
   } else if (d.mode === 'endpoint') {
     const s = getShape(d.id);
     if (!s || s.type !== 'arrow') return;

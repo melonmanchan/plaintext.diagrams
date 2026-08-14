@@ -85,12 +85,20 @@ export interface Raster {
   rows: number;
 }
 
+/** A contained shape's lane assignment captured at resize start. */
+export interface LaneSlot {
+  id: number;
+  lane: number;
+  offX: number;
+  offY: number;
+}
+
 export type Put = (x: number, y: number, c: string, sid: number, p: number) => void;
 
 export type Drag =
   | { mode: 'move'; sx: number; sy: number; orig: Map<number, Shape>; snap: string; moved: boolean }
   | { mode: 'marquee'; sx: number; sy: number; cx: number; cy: number; base: Set<number>; moved: boolean }
-  | { mode: 'resize'; id: number; corner: Corner; orig: BoxShape | GroupShape; snap: string; moved: boolean }
+  | { mode: 'resize'; id: number; corner: Corner; orig: BoxShape | GroupShape; snap: string; moved: boolean; slots?: LaneSlot[] }
   | { mode: 'endpoint'; id: number; which: 1 | 2; snap: string; moved: boolean }
   | { mode: 'create-box'; kind: 'box' | 'group'; sx: number; sy: number; id: number | null; snap: string; moved: boolean }
   | { mode: 'create-arrow'; id: number; snap: string; moved: boolean };

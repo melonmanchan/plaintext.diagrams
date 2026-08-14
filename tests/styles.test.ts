@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportAscii } from '../src/export';
 import { parseAscii } from '../src/import';
+import { applyLaneSlots, captureLaneSlots } from '../src/shapes';
 import type { ArrowShape, BoxShape, GroupShape, Shape } from '../src/types';
 
 const box = (id: number, x: number, y: number, w: number, h: number, text = ''): BoxShape =>
@@ -72,26 +73,50 @@ describe('rounded boxes', () => {
   });
 });
 
-describe('dashed groups', () => {
-  it('render with gapped borders, corners intact', () => {
-    const out = exportAscii([group(1, 0, 0, 12, 4, '', )]);
-    expect(out.startsWith('+')).toBe(true);
-    const dashed = exportAscii([{ ...group(1, 0, 0, 12, 4), style: 'dashed' }]);
-    expect(dashed).toContain(' = ');
-    expect(dashed.startsWith('+')).toBe(true);
+describe('swimlanes', () => {
+  it('render a header band with separators and lane titles', () => {
+    const g: GroupShape = { ...group(1, 0, 0, 31, 8), lanes: ['Client', 'API', 'Worker'] };
+    expect(exportAscii([g])).toBe([
+      '+=========+=========+=========+',
+      '| Client  | API     | Worker  |',
+      '+=========+=========+=========+',
+      '|         |         |         |',
+      '|         |         |         |',
+      '|         |         |         |',
+      '|         |         |         |',
+      '+=========+=========+=========+',
+    ].join('\n'));
   });
 
-  it('round-trip preserves dashed style, title, and contents', () => {
-    const shapes: Shape[] = [
-      { ...group(1, 0, 0, 30, 9, 'Trust'), style: 'dashed' },
-      box(2, 4, 4, 10, 3, 'In'),
-    ];
+  it('round-trip preserves lanes, titles, and contents', () => {
+    const g: GroupShape = { ...group(1, 0, 0, 40, 12, 'Flow'), lanes: ['Client', 'API'] };
+    const shapes: Shape[] = [g, box(2, 4, 7, 10, 3, 'In')];
     const first = exportAscii(shapes);
     const reparsed = parseAscii(first);
-    const g = reparsed.find((s): s is GroupShape => s.type === 'group');
-    expect(g?.style).toBe('dashed');
-    expect(g?.text).toBe('Trust');
+    const rg = reparsed.find((s): s is GroupShape => s.type === 'group');
+    expect(rg?.lanes).toEqual(['Client', 'API']);
+    expect(rg?.text).toBe('Flow');
     expect(reparsed.filter((s) => s.type === 'box')).toHaveLength(1);
     expect(exportAscii(reparsed)).toBe(first);
+  });
+
+  it('resizing keeps contents in their lanes (slot capture/apply)', () => {
+    const g: GroupShape = { ...group(1, 0, 0, 61, 16), lanes: ['A', 'B', 'C'] };
+    // lane edges at 0,20,40,60 → lane B interior is 21..39
+    const b: BoxShape = box(2, 24, 6, 10, 3, 'In-B');
+    const shapes: Shape[] = [g, b];
+    const slots = captureLaneSlots(g, shapes);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].lane).toBe(1);
+    // widen the group: lanes move; the box must stay inside lane B
+    g.w = 91; // edges now 0,30,60,90 → lane B interior 31..59
+    applyLaneSlots(g, shapes, slots);
+    expect(b.x).toBeGreaterThan(30);
+    expect(b.x + b.w - 1).toBeLessThan(60);
+    // shrink hard: lane B interior 11..19 (w=31) — box clamps inside
+    g.w = 31;
+    applyLaneSlots(g, shapes, slots);
+    expect(b.x).toBeGreaterThan(10);
+    expect(b.x + b.w - 1).toBeLessThan(21);
   });
 });
