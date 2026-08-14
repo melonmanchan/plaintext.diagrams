@@ -1,7 +1,8 @@
-import { CH, COLS, CW, ROWS } from './constants';
+import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
+import { cycleArrowHeads } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { render } from './render';
-import { boxAt, boxAttachAt, boxHandles, boxMinSize, onBoxBorder, placeFrom } from './shapes';
+import { boxAt, boxAttachAt, boxHandles, boxMinSize, onBoxBorder, placeFrom, snapBox } from './shapes';
 import { app, getShape, pushUndo, save, snapshot, soleSel, uid } from './store';
 import type { ArrowShape, BoxShape, Corner, Shape, TextShape } from './types';
 import { hintText, setTool } from './ui';
@@ -15,8 +16,8 @@ const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 
 function cellAt(px: number, py: number): { x: number; y: number } {
   return {
-    x: clamp(Math.floor(px / CW), 0, COLS - 1),
-    y: clamp(Math.floor(py / CH), 0, ROWS - 1),
+    x: clamp(Math.floor(px / CW), 0, app.world.cols - 1),
+    y: clamp(Math.floor(py / CH), 0, app.world.rows - 1),
   };
 }
 
@@ -28,7 +29,7 @@ function eventPos(e: MouseEvent): { px: number; py: number } {
 
 function shapeIdAt(cx: number, cy: number): number | null {
   if (!app.grid) return null;
-  return app.grid.id[cy * COLS + cx] || null;
+  return app.grid.id[cy * app.grid.cols + cx] || null;
 }
 
 function handleAt(px: number, py: number, s: BoxShape): Corner | null {
@@ -51,12 +52,15 @@ function quickBox(cx: number, cy: number): BoxShape {
   return {
     type: 'box',
     id: uid(),
-    x: clamp(cx - (w >> 1), 0, COLS - w),
-    y: clamp(cy - (h >> 1), 0, ROWS - h),
+    x: clamp(cx - (w >> 1), 0, MAX_COLS - w),
+    y: clamp(cy - (h >> 1), 0, MAX_ROWS - h),
     w, h,
     text: '',
   };
 }
+
+// Middle-button pan state (view-level, outside the shape drag machine).
+let pan: { sx: number; sy: number; left: number; top: number } | null = null;
 
 function onMouseDown(e: MouseEvent): void {
   if (e.button !== 0 && e.button !== 1) return;
@@ -64,9 +68,18 @@ function onMouseDown(e: MouseEvent): void {
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
 
-  // Middle click or Cmd/Ctrl+click: drop a new box centered on the cursor, in any tool.
-  if (e.button === 1 || (e.button === 0 && (e.metaKey || e.ctrlKey))) {
-    e.preventDefault(); // suppress autoscroll / native modifier behavior
+  // Middle button: pan the viewport.
+  if (e.button === 1) {
+    e.preventDefault(); // suppress autoscroll
+    const stage = document.querySelector<HTMLElement>('#stage')!;
+    pan = { sx: e.clientX, sy: e.clientY, left: stage.scrollLeft, top: stage.scrollTop };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // Cmd/Ctrl+click: drop a new box centered on the cursor, in any tool.
+  if (e.metaKey || e.ctrlKey) {
+    e.preventDefault(); // suppress native modifier behavior
     const snap = snapshot();
     const b = quickBox(cx, cy);
     app.doc.shapes.push(b);
@@ -77,6 +90,7 @@ function onMouseDown(e: MouseEvent): void {
     render();
     return;
   }
+
 
   if (app.tool === 'select') {
     const sel = soleSel();
@@ -144,6 +158,12 @@ function onMouseDown(e: MouseEvent): void {
 }
 
 function onMouseMove(e: MouseEvent): void {
+  if (pan) {
+    const stage = document.querySelector<HTMLElement>('#stage')!;
+    stage.scrollLeft = pan.left - (e.clientX - pan.sx);
+    stage.scrollTop = pan.top - (e.clientY - pan.sy);
+    return;
+  }
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
   document.querySelector('#hint')!.textContent = hintText(cx, cy);
@@ -162,6 +182,11 @@ function onMouseMove(e: MouseEvent): void {
       const s = getShape(id);
       if (s) placeFrom(s, o, dx, dy, app.doc.shapes);
     }
+    app.guides = [];
+    if (!e.altKey && d.orig.size === 1) {
+      const only = getShape(d.orig.keys().next().value as number);
+      if (only && only.type === 'box') app.guides = snapBox(only, app.doc.shapes);
+    }
   } else if (d.mode === 'marquee') {
     d.cx = cx;
     d.cy = cy;
@@ -171,7 +196,7 @@ function onMouseMove(e: MouseEvent): void {
     if (app.grid)
       for (let y = y1; y <= y2; y++)
         for (let x = x1; x <= x2; x++) {
-          const sid = app.grid.id[y * COLS + x];
+          const sid = app.grid.id[y * app.grid.cols + x];
           if (sid) next.add(sid);
         }
     app.selection = next;
@@ -185,8 +210,8 @@ function onMouseMove(e: MouseEvent): void {
     if (d.corner.includes('e')) x2 = Math.max(cx, x1 + (minW - 1));
     if (d.corner.includes('n')) y1 = Math.min(cy, y2 - (minH - 1));
     if (d.corner.includes('s')) y2 = Math.max(cy, y1 + (minH - 1));
-    s.x = clamp(x1, 0, COLS - minW);
-    s.y = clamp(y1, 0, ROWS - minH);
+    s.x = clamp(x1, 0, MAX_COLS - minW);
+    s.y = clamp(y1, 0, MAX_ROWS - minH);
     s.w = x2 - s.x + 1;
     s.h = y2 - s.y + 1;
   } else if (d.mode === 'endpoint') {
@@ -226,9 +251,15 @@ function onMouseMove(e: MouseEvent): void {
 }
 
 function onMouseUp(): void {
+  if (pan) {
+    pan = null;
+    canvas.style.cursor = 'default';
+    return;
+  }
   const d = app.drag;
   if (!d) return;
   app.drag = null;
+  app.guides = [];
 
   if (d.mode === 'create-box') {
     if (d.id != null) {
@@ -307,7 +338,17 @@ function updateCursor(px: number, py: number, cx: number, cy: number): void {
 
 export function initInteractions(): void {
   canvas.addEventListener('mousedown', onMouseDown);
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const { px, py } = eventPos(e);
+    const { x: cx, y: cy } = cellAt(px, py);
+    const hit = shapeIdAt(cx, cy);
+    const s = hit != null ? getShape(hit) : null;
+    if (s && s.type === 'arrow') {
+      app.selection = new Set([s.id]);
+      cycleArrowHeads();
+    }
+  });
   canvas.addEventListener('dblclick', onDblClick);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);

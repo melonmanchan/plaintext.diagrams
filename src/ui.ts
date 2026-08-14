@@ -1,12 +1,12 @@
-import { clearAll, deleteSelected, nudge } from './commands';
+import { clearAll, cycleArrowHeads, deleteSelected, nudge } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { exportAscii } from './export';
 import { parseAscii } from './import';
 import { render, setupCanvas, updateToolbar } from './render';
-import { app, genId, loadDoc, pushUndo, redo, resetView, save, soleSel, uid, undo } from './store';
+import { app, genId, getShape, loadDoc, pushUndo, redo, resetView, save, soleSel, uid, undo } from './store';
 import type { Shape, Tool } from './types';
 import { clamp } from './util';
-import { COLS, ROWS } from './constants';
+import { MAX_COLS, MAX_ROWS } from './constants';
 
 /* ============================================================
  * Toolbar, project bar, export modal, keyboard shortcuts.
@@ -16,9 +16,9 @@ const $ = <T extends Element = HTMLElement>(sel: string): T =>
   document.querySelector<T>(sel)!;
 
 const HINTS: Record<Tool, string> = {
-  select: 'click: select · shift-click / drag: multi-select · cmd-click / middle-click: new box · type: edit label · del: delete',
+  select: 'click: select · shift-click / drag: multi-select · cmd-click: new box · middle-drag: pan · type: edit label · del: delete',
   box: 'drag to draw a box, then just type to label it',
-  arrow: 'drag from source to target — endpoints inside a box snap to it · select + type to label the arrow',
+  arrow: 'drag from source to target — endpoints inside a box snap to it · type to label · right-click / cmd+B: cycle heads',
   text: 'click anywhere to place free-standing text',
 };
 
@@ -121,7 +121,7 @@ function flash(btn: HTMLButtonElement, label: string): void {
 
 /** Primary export: straight to clipboard. Shift+click previews in the modal. */
 async function exportToClipboard(): Promise<void> {
-  const text = exportAscii(app.doc.shapes);
+  const text = exportAscii(app.doc.shapes, app.unicode);
   if (!text) {
     flash($('#export'), 'Canvas empty');
     return;
@@ -131,7 +131,7 @@ async function exportToClipboard(): Promise<void> {
 }
 
 function openExport(): void {
-  const text = exportAscii(app.doc.shapes);
+  const text = exportAscii(app.doc.shapes, app.unicode);
   const out = $<HTMLTextAreaElement>('#out');
   out.value = text;
   const lines = text ? text.split('\n') : [];
@@ -168,7 +168,14 @@ export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
   $('#zoom-reset').textContent = Math.round(z * 100) + '%';
 }
 
+function syncStyleButton(): void {
+  const b = $('#style');
+  b.textContent = app.unicode ? '┌─' : '+-';
+  b.classList.toggle('active', app.unicode);
+}
+
 /* ---------- paste: ASCII → shapes ---------- */
+
 
 function onPaste(e: ClipboardEvent): void {
   if (app.editing != null) return;
@@ -209,8 +216,8 @@ function onPaste(e: ClipboardEvent): void {
     }
   }
   const anchor = app.mouseCell ?? { x: 2, y: 2 };
-  const dx = clamp(anchor.x - minX, -minX, Math.max(-minX, COLS - 1 - maxX));
-  const dy = clamp(anchor.y - minY, -minY, Math.max(-minY, ROWS - 1 - maxY));
+  const dx = clamp(anchor.x - minX, -minX, Math.max(-minX, MAX_COLS - 1 - maxX));
+  const dy = clamp(anchor.y - minY, -minY, Math.max(-minY, MAX_ROWS - 1 - maxY));
   for (const s of parsed) {
     if (s.type === 'arrow') { s.x1 += dx; s.y1 += dy; s.x2 += dx; s.y2 += dy; }
     else { s.x += dx; s.y += dy; }
@@ -251,9 +258,13 @@ function onKeyDown(e: KeyboardEvent): void {
     render();
     return;
   }
-  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(app.zoom * 1.5); return; }
-  if (mod && e.key === '-') { e.preventDefault(); setZoom(app.zoom / 1.5); return; }
+  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(app.zoom * 1.25); return; }
+  if (mod && e.key === '-') { e.preventDefault(); setZoom(app.zoom / 1.25); return; }
   if (mod && e.key === '0') { e.preventDefault(); setZoom(1); return; }
+  if (mod && e.key.toLowerCase() === 'b') {
+    if (cycleArrowHeads()) e.preventDefault();
+    return;
+  }
   if (mod && e.key.toLowerCase() === 'a') {
     e.preventDefault();
     app.selection = new Set(app.doc.shapes.map((s) => s.id));
@@ -264,7 +275,7 @@ function onKeyDown(e: KeyboardEvent): void {
     if (!app.selection.size) return; // let the browser handle plain copy
     e.preventDefault();
     const picked = app.doc.shapes.filter((s) => app.selection.has(s.id));
-    const text = exportAscii(picked);
+    const text = exportAscii(picked, app.unicode);
     if (text) {
       void copyText(text);
       flash($('#export'), 'Copied selection ✓');
@@ -333,14 +344,21 @@ export function initUi(): void {
     if ((e as MouseEvent).shiftKey) openExport();
     else void exportToClipboard();
   });
-  $('#zoom-in').addEventListener('click', () => setZoom(app.zoom * 1.5));
-  $('#zoom-out').addEventListener('click', () => setZoom(app.zoom / 1.5));
+  $('#zoom-in').addEventListener('click', () => setZoom(app.zoom * 1.25));
+  $('#zoom-out').addEventListener('click', () => setZoom(app.zoom / 1.25));
   $('#zoom-reset').addEventListener('click', () => setZoom(1));
+  $('#style').addEventListener('click', () => {
+    app.unicode = !app.unicode;
+    try { localStorage.setItem('vibedraw:style', app.unicode ? 'unicode' : 'ascii'); } catch { /* ignore */ }
+    syncStyleButton();
+    render();
+  });
+  syncStyleButton();
   $('#stage').addEventListener('wheel', (e) => {
     if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps panning
     e.preventDefault();
     const r = $('#stage').getBoundingClientRect();
-    setZoom(app.zoom * Math.pow(1.004, -e.deltaY), { sx: e.clientX - r.left, sy: e.clientY - r.top });
+    setZoom(app.zoom * Math.pow(1.0025, -e.deltaY), { sx: e.clientX - r.left, sy: e.clientY - r.top });
   }, { passive: false });
   $('#close').addEventListener('click', closeExport);
   $('#copy').addEventListener('click', async () => {

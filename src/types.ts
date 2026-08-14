@@ -27,9 +27,17 @@ export interface ArrowShape {
   box1: number | null;
   box2: number | null;
   text?: string;
+  /** Arrowhead placement; absent means 'end'. */
+  heads?: 'end' | 'both' | 'start';
 }
 
 export type Shape = BoxShape | ArrowShape | TextShape;
+
+/** Alignment guide shown while snap-dragging, in world px. */
+export interface Guide {
+  axis: 'v' | 'h';
+  px: number;
+}
 
 export interface DocState {
   seq: number;
@@ -55,6 +63,8 @@ export interface Raster {
   ch: string[];
   id: Int32Array;
   pri: Uint8Array;
+  cols: number;
+  rows: number;
 }
 
 export type Put = (x: number, y: number, c: string, sid: number, p: number) => void;

@@ -13,8 +13,17 @@ const HEAD_DIR: Record<string, [number, number]> = {
   '^': [0, -1],
 };
 
+/** Unicode box-drawing → ASCII normalization, so both styles parse. */
+const UNI_TO_ASCII: Record<string, string> = {
+  '─': '-', '│': '|',
+  '┌': '+', '┐': '+', '└': '+', '┘': '+',
+  '├': '+', '┤': '+', '┬': '+', '┴': '+', '┼': '+',
+  '▶': '>', '►': '>', '◀': '<', '◄': '<', '▼': 'v', '▲': '^',
+};
+
 export function parseAscii(text: string): Shape[] {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, ''));
+  const normalized = text.replace(/[─│┌┐└┘├┤┬┴┼▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
+  const lines = normalized.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, ''));
   const H = lines.length;
   const at = (x: number, y: number): string =>
     y >= 0 && y < H && x >= 0 && x < lines[y].length ? lines[y][x] : ' ';
@@ -71,6 +80,7 @@ export function parseAscii(text: string): Shape[] {
     const cells: [number, number][] = [[hx, hy]];
     const labelCells: [number, number][] = [];
     let label = '';
+    let dual = false;
     let cx = hx + dir[0], cy = hy + dir[1];
 
     for (;;) {
@@ -79,6 +89,12 @@ export function parseAscii(text: string): Shape[] {
         cells.push([cx, cy]);
         cx += dir[0]; cy += dir[1];
         continue;
+      }
+      // Opposite-pointing head aligned with our travel: double-headed arrow.
+      if (free(cx, cy) && ch in HEAD_DIR && HEAD_DIR[ch][0] === dir[0] && HEAD_DIR[ch][1] === dir[1]) {
+        cells.push([cx, cy]);
+        dual = true;
+        break;
       }
       if (ch === '+') {
         // Crossing/junction: prefer continuing straight through.
@@ -139,6 +155,7 @@ export function parseAscii(text: string): Shape[] {
     if (box1 != null && box1 === box2) box1 = null;
     const a: ArrowShape = { type: 'arrow', id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
     if (label) a.text = label;
+    if (dual) a.heads = 'both';
     return a;
   }
 

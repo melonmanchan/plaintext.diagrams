@@ -1,5 +1,5 @@
-import { DOC_KEY, STORE_INDEX } from './constants';
-import type { DocState, Drag, Project, Raster, Shape, Tool } from './types';
+import { COLS, DOC_KEY, ROWS, STORE_INDEX } from './constants';
+import type { DocState, Drag, Guide, Project, Raster, Shape, Tool } from './types';
 
 /* ============================================================
  * Central mutable state + persistence. No DOM, no rendering —
@@ -24,6 +24,12 @@ export const app = {
   zoom: 1,
   /** Last hovered cell — paste anchor. */
   mouseCell: null as { x: number; y: number } | null,
+  /** Active snap-alignment guides while dragging. */
+  guides: [] as Guide[],
+  /** Render/export with Unicode box-drawing characters. */
+  unicode: true,
+  /** Current world size in cells; grows/shrinks with content. */
+  world: { cols: COLS, rows: ROWS },
 };
 
 export const uid = () => app.doc.seq++;
@@ -73,7 +79,15 @@ export function save(): void {
 export function loadDoc(id: string): DocState | null {
   try {
     const s = JSON.parse(localStorage.getItem(DOC_KEY(id)) ?? 'null');
-    return s && Array.isArray(s.shapes) ? s : null;
+    if (!s || !Array.isArray(s.shapes)) return null;
+    for (const sh of s.shapes) {
+      if (sh.type === 'arrow' && 'dual' in sh) {
+        // pre-heads documents stored `dual: boolean`
+        if (sh.dual) sh.heads = 'both';
+        delete sh.dual;
+      }
+    }
+    return s;
   } catch { return null; }
 }
 

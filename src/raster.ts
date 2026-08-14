@@ -8,15 +8,15 @@ import { clamp } from './util';
  * sliced for the ASCII export.
  * ============================================================ */
 
-export function rasterize(shapes: Shape[]): Raster {
-  const N = COLS * ROWS;
+export function rasterize(shapes: Shape[], cols = COLS, rows = ROWS): Raster {
+  const N = cols * rows;
   const ch: string[] = new Array(N).fill(' ');
   const id = new Int32Array(N);
   const pri = new Uint8Array(N);
 
   const put: Put = (x, y, c, sid, p) => {
-    if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return;
-    const i = y * COLS + x;
+    if (x < 0 || y < 0 || x >= cols || y >= rows) return;
+    const i = y * cols + x;
     if (p === PRI.line && pri[i] === PRI.line) {
       // line-over-line: keep/create junctions
       if (ch[i] === '+') { id[i] = sid; return; }
@@ -32,7 +32,7 @@ export function rasterize(shapes: Shape[]): Raster {
     else if (s.type === 'arrow') drawArrow(s, shapes, put);
     else drawText(s, put);
   }
-  return { ch, id, pri };
+  return { ch, id, pri, cols, rows };
 }
 
 function drawBox(s: BoxShape, put: Put): void {
@@ -90,9 +90,17 @@ function drawArrow(s: ArrowShape, shapes: Shape[], put: Put): void {
   for (let i = 1; i < pts.length - 1; i++)
     put(pts[i].x, pts[i].y, '+', s.id, PRI.line);
 
-  const a = pts[pts.length - 2], b = pts[pts.length - 1];
-  const head = b.x > a.x ? '>' : b.x < a.x ? '<' : b.y > a.y ? 'v' : '^';
-  put(b.x, b.y, head, s.id, PRI.head);
+  const heads = s.heads ?? 'end';
+  if (heads !== 'start') {
+    const a = pts[pts.length - 2], b = pts[pts.length - 1];
+    const head = b.x > a.x ? '>' : b.x < a.x ? '<' : b.y > a.y ? 'v' : '^';
+    put(b.x, b.y, head, s.id, PRI.head);
+  }
+  if (heads !== 'end') {
+    const a0 = pts[1], b0 = pts[0];
+    const tail = b0.x > a0.x ? '>' : b0.x < a0.x ? '<' : b0.y > a0.y ? 'v' : '^';
+    put(b0.x, b0.y, tail, s.id, PRI.head);
+  }
 
   if (s.text) {
     const mid = pathMidpoint(pts);
@@ -104,6 +112,53 @@ function drawArrow(s: ArrowShape, shapes: Shape[], put: Put): void {
       put(x0 + line.length, y0, ' ', s.id, PRI.text);
     });
   }
+}
+
+/* ============================================================
+ * Unicode restyling — display/export-time translation of the
+ * ASCII grid to box-drawing characters. Junction shape ('┌' vs
+ * '┼' …) is derived from which neighbors connect.
+ * ============================================================ */
+
+const UNI_HEAD: Record<string, string> = { '>': '▶', '<': '◀', 'v': '▼', '^': '▲' };
+// Bitmask: L=1, R=2, U=4, D=8.
+const UNI_JUNCTION: Record<number, string> = {
+  3: '─', 12: '│', 10: '┌', 9: '┐', 6: '└', 5: '┘',
+  11: '┬', 7: '┴', 14: '├', 13: '┤', 15: '┼',
+};
+
+export function stylize(r: Raster): string[] {
+  const isLinePri = (p: number) => p === PRI.line || p === PRI.boxborder;
+  const connects = (x: number, y: number, axis: 'h' | 'v'): boolean => {
+    if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return false;
+    const i = y * r.cols + x;
+    if (isLinePri(r.pri[i])) {
+      const c = r.ch[i];
+      return c === '+' || c === (axis === 'h' ? '-' : '|');
+    }
+    return false;
+  };
+  const out = new Array<string>(r.cols * r.rows);
+  for (let y = 0; y < r.rows; y++)
+    for (let x = 0; x < r.cols; x++) {
+      const i = y * r.cols + x;
+      const c = r.ch[i];
+      if (r.pri[i] === PRI.head) {
+        out[i] = UNI_HEAD[c] ?? c;
+      } else if (isLinePri(r.pri[i])) {
+        if (c === '-') out[i] = '─';
+        else if (c === '|') out[i] = '│';
+        else if (c === '+') {
+          const mask =
+            (connects(x - 1, y, 'h') ? 1 : 0) |
+            (connects(x + 1, y, 'h') ? 2 : 0) |
+            (connects(x, y - 1, 'v') ? 4 : 0) |
+            (connects(x, y + 1, 'v') ? 8 : 0);
+          out[i] = UNI_JUNCTION[mask] ?? '┼';
+        } else out[i] = c;
+      } else out[i] = c;
+    }
+  return out;
 }
 
 /** Cell at half the walked length of an orthogonal path. */

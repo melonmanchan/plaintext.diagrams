@@ -1,5 +1,7 @@
 export const CW = 10, CH = 18;            // cell size, px
-export const COLS = 200, ROWS = 100;      // world size, cells
+export const COLS = 200, ROWS = 100;      // minimum world size, cells
+export const MAX_COLS = 1000, MAX_ROWS = 500; // hard world cap
+export const GROW_MARGIN = 30;            // free cells kept beyond content
 export const FONT = '15px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
 
 export const STORE_INDEX = 'vibedraw:index';

@@ -1,10 +1,26 @@
 import { render } from './render';
 import { placeFrom } from './shapes';
 import { app, getShape, pushUndo, save } from './store';
+import type { ArrowShape } from './types';
 
 /* ============================================================
  * Selection-level commands shared by toolbar and keyboard.
  * ============================================================ */
+
+
+/** Cycle head placement (end → both → start) on all selected arrows. */
+export function cycleArrowHeads(): boolean {
+  const arrows = [...app.selection]
+    .map(getShape)
+    .filter((s): s is ArrowShape => s?.type === 'arrow');
+  if (!arrows.length) return false;
+  pushUndo();
+  for (const a of arrows)
+    a.heads = (a.heads ?? 'end') === 'end' ? 'both' : a.heads === 'both' ? 'start' : 'end';
+  save();
+  render();
+  return true;
+}
 
 export function deleteSelected(): void {
   if (!app.selection.size) return;

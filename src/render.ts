@@ -1,6 +1,6 @@
-import { CH, COLOR, COLS, CW, FONT, ROWS } from './constants';
-import { rasterize } from './raster';
-import { boxHandles } from './shapes';
+import { CH, COLOR, COLS, CW, FONT, GROW_MARGIN, MAX_COLS, MAX_ROWS, ROWS } from './constants';
+import { rasterize, stylize } from './raster';
+import { boxHandles, contentExtent } from './shapes';
 import { app, getShape, soleSel } from './store';
 import type { Shape } from './types';
 
@@ -9,26 +9,30 @@ import type { Shape } from './types';
  * it (except caching the raster for hit-testing).
  * ============================================================ */
 
-export const W = COLS * CW, H = ROWS * CH;
+const worldPx = () => ({ W: app.world.cols * CW, H: app.world.rows * CH });
 
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 export const ctx = canvas.getContext('2d')!;
 let dotPattern: CanvasPattern | null = null;
 
 export function setupCanvas(): void {
+  const { W, H } = worldPx();
   const z = app.zoom;
   const dpr = window.devicePixelRatio || 1;
-  // Cap backing-store density so high zoom doesn't allocate a huge bitmap.
-  const bs = Math.min(dpr, 2.5 / z);
-  canvas.width = Math.round(W * z * bs);
-  canvas.height = Math.round(H * z * bs);
+  // Cap backing-store density (and total area) so huge worlds/zooms
+  // never allocate an oversized bitmap.
+  let scale = Math.min(dpr, 2.5 / z) * z;
+  const MAX_AREA = 180e6; // px²
+  if (W * scale * H * scale > MAX_AREA) scale = Math.sqrt(MAX_AREA / (W * H));
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
   canvas.style.width = W * z + 'px';
   canvas.style.height = H * z + 'px';
   const world = document.querySelector<HTMLElement>('#world')!;
   world.style.width = W * z + 'px';
   world.style.height = H * z + 'px';
   // Drawing code stays in world (cell-px) coordinates.
-  ctx.setTransform(z * bs, 0, 0, z * bs, 0, 0);
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
   const pc = document.createElement('canvas');
   pc.width = CW;
@@ -48,7 +52,9 @@ function shapeColor(s: Shape | null): string {
 }
 
 export function render(): void {
-  const grid = rasterize(app.doc.shapes);
+  syncWorldSize();
+  const { W, H } = worldPx();
+  const grid = rasterize(app.doc.shapes, app.world.cols, app.world.rows);
   app.grid = grid;
 
   ctx.fillStyle = dotPattern ?? COLOR.bg;
@@ -56,9 +62,9 @@ export function render(): void {
 
   // selection / hover backgrounds
   if (app.selection.size || app.hoverId != null) {
-    for (let y = 0; y < ROWS; y++)
-      for (let x = 0; x < COLS; x++) {
-        const sid = grid.id[y * COLS + x];
+    for (let y = 0; y < grid.rows; y++)
+      for (let x = 0; x < grid.cols; x++) {
+        const sid = grid.id[y * grid.cols + x];
         if (!sid) continue;
         if (app.selection.has(sid)) {
           ctx.fillStyle = COLOR.selBg;
@@ -74,11 +80,12 @@ export function render(): void {
   ctx.font = FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  const display = app.unicode ? stylize(grid) : grid.ch;
   const colorCache = new Map<number, string>();
-  for (let y = 0; y < ROWS; y++)
-    for (let x = 0; x < COLS; x++) {
-      const i = y * COLS + x;
-      const c = grid.ch[i];
+  for (let y = 0; y < grid.rows; y++)
+    for (let x = 0; x < grid.cols; x++) {
+      const i = y * grid.cols + x;
+      const c = display[i];
       if (c === ' ') continue;
       const sid = grid.id[i];
       let col = colorCache.get(sid);
@@ -100,8 +107,34 @@ export function render(): void {
     ctx.setLineDash([4, 3]);
     ctx.strokeRect(x * CW + 0.5, y * CH + 0.5, w * CW - 1, h * CH - 1);
     ctx.setLineDash([]);
+  } else if (d && d.mode === 'move' && app.guides.length) {
+    ctx.strokeStyle = COLOR.text;
+    ctx.setLineDash([6, 4]);
+    for (const g of app.guides) {
+      ctx.beginPath();
+      if (g.axis === 'v') { ctx.moveTo(g.px + 0.5, 0); ctx.lineTo(g.px + 0.5, H); }
+      else { ctx.moveTo(0, g.px + 0.5); ctx.lineTo(W, g.px + 0.5); }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
   }
   updateToolbar();
+}
+
+/** Grow the world to fit content (+margin); shrink back only when idle. */
+function syncWorldSize(): void {
+  const ext = contentExtent(app.doc.shapes);
+  const wantC = Math.min(MAX_COLS, Math.max(COLS, ext.x + GROW_MARGIN));
+  const wantR = Math.min(MAX_ROWS, Math.max(ROWS, ext.y + GROW_MARGIN));
+  const idle = !app.drag && app.editing == null;
+  let c = app.world.cols, r = app.world.rows;
+  if (wantC > c || idle) c = wantC;
+  if (wantR > r || idle) r = wantR;
+  if (c !== app.world.cols || r !== app.world.rows) {
+    app.world.cols = c;
+    app.world.rows = r;
+    setupCanvas();
+  }
 }
 
 function drawHandles(): void {
@@ -115,12 +148,21 @@ function drawHandles(): void {
       ctx.strokeRect(h.px - 4, h.py - 4, 8, 8);
     }
   } else if (s.type === 'arrow') {
+    // Hollow rings around the endpoint cells: the head glyph stays readable.
     for (const [x, y] of [[s.x1, s.y1], [s.x2, s.y2]] as const) {
+      const cx = x * CW + CW / 2, cy = y * CH + CH / 2;
       ctx.beginPath();
-      ctx.arc(x * CW + CW / 2, y * CH + CH / 2, 5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = COLOR.bg;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = COLOR.sel;
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
+    ctx.lineWidth = 1;
   }
 }
 

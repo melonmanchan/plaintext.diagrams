@@ -46,6 +46,7 @@ function boot(): void {
   updateProjectBar();
 }
 
+try { app.unicode = localStorage.getItem('vibedraw:style') !== 'ascii'; } catch { /* ignore */ }
 setupCanvas();
 initUi();
 initInteractions();
@@ -62,7 +63,7 @@ window.__app = {
   get selection() { return [...app.selection]; },
   get projects() { return app.projects; },
   render,
-  exportAscii: () => exportAscii(app.doc.shapes),
+  exportAscii: () => exportAscii(app.doc.shapes, app.unicode),
   rasterize,
   setTool,
   switchProject,

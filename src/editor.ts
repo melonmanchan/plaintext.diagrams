@@ -1,9 +1,10 @@
-import { CH, CW, FONT } from './constants';
+import { CH, CW, FONT, MAX_COLS, MAX_ROWS } from './constants';
 import { pathMidpoint, resolveArrow } from './raster';
 import { ctx, render } from './render';
-import { fitBoxToLabel } from './shapes';
+import { boxMinSize, fitBoxToLabel } from './shapes';
 import { app, getShape, pushUndo, save, snapshot } from './store';
-import type { Shape } from './types';
+import type { BoxShape, Shape } from './types';
+import { clamp } from './util';
 
 /* ============================================================
  * Inline label editing via a grid-aligned textarea overlay.
@@ -25,18 +26,30 @@ export function startEdit(s: Shape, seed?: string): void {
   ta.style.letterSpacing = (CW - ctx.measureText('M').width).toFixed(2) + 'px';
 
   if (s.type === 'box') {
-    const iw = Math.max(1, s.w - 2), ih = Math.max(1, s.h - 2);
     ta.style.left = (s.x + 1) * CW + 'px';
     ta.style.top = (s.y + 1) * CH + 'px';
-    ta.style.width = iw * CW + 'px';
-    ta.style.height = ih * CH + 'px';
     ta.style.textAlign = 'center';
-    const pad = () => {
+    const ow = s.w, oh = s.h;
+    // Grow the box live while typing (never below its pre-edit size).
+    const sync = () => {
+      const b = getShape(s.id);
+      if (!b || b.type !== 'box') return;
+      const [minW, minH] = boxMinSize({ ...b, text: ta.value });
+      const w = Math.min(Math.max(ow, minW), MAX_COLS - b.x);
+      const h = Math.min(Math.max(oh, minH), MAX_ROWS - b.y);
+      if (w !== b.w || h !== b.h) {
+        b.w = w;
+        b.h = h;
+        render();
+      }
+      const iw = Math.max(1, b.w - 2), ih = Math.max(1, b.h - 2);
+      ta.style.width = iw * CW + 'px';
+      ta.style.height = ih * CH + 'px';
       const n = ta.value.split('\n').length;
       ta.style.paddingTop = Math.max(0, (ih - n) >> 1) * CH + 'px';
     };
-    ta.addEventListener('input', pad);
-    pad();
+    ta.addEventListener('input', sync);
+    sync();
   } else {
     const at = s.type === 'arrow'
       ? pathMidpoint(resolveArrow(s, app.doc.shapes))
@@ -52,6 +65,14 @@ export function startEdit(s: Shape, seed?: string): void {
     };
     ta.addEventListener('input', fit);
     fit();
+    // Double-click inside a free-text editor: promote the text to a box.
+    if (s.type === 'text') {
+      ta.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        promoteToBox(s.id, ta.value);
+      });
+    }
   }
 
   ta.addEventListener('keydown', (e) => {
@@ -81,6 +102,32 @@ export function startEdit(s: Shape, seed?: string): void {
   render();
 }
 
+/** Replace a text shape with a box labelled with the editor's content. */
+function promoteToBox(id: number, raw: string): void {
+  const t = getShape(id);
+  if (!t || t.type !== 'text') return;
+  const caret = editorEl?.selectionStart ?? raw.length;
+  pushUndo(editSnap ?? undefined);
+  const b: BoxShape = {
+    type: 'box',
+    id: t.id,
+    // Keep the label glyphs roughly where the text sat (border + padding offset).
+    x: clamp(t.x - 3, 0, MAX_COLS - 3),
+    y: clamp(t.y - 1, 0, MAX_ROWS - 3),
+    w: 3,
+    h: 3,
+    text: raw.replace(/[ \t]+$/gm, '').replace(/\n+$/, ''),
+  };
+  fitBoxToLabel(b);
+  app.doc.shapes[app.doc.shapes.indexOf(t)] = b;
+  teardownEditor();
+  app.selection = new Set([b.id]);
+  save();
+  render();
+  startEdit(b);
+  editorEl?.setSelectionRange(caret, caret);
+}
+
 export function commitEdit(): void {
   if (app.editing == null || !editorEl) return;
   const s = getShape(app.editing);
@@ -105,8 +152,11 @@ export function commitEdit(): void {
 
 export function cancelEdit(): void {
   if (app.editing == null) return;
-  const s = getShape(app.editing);
+  const id = app.editing;
   teardownEditor();
+  // Revert any live box growth (and uncommitted state) from this session.
+  if (editSnap) app.doc = JSON.parse(editSnap);
+  const s = getShape(id);
   if (s && s.type === 'text' && !s.text) {
     app.doc.shapes = app.doc.shapes.filter((sh) => sh.id !== s.id);
     app.selection.delete(s.id);

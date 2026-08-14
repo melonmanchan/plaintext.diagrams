@@ -29,12 +29,15 @@ body { display: flex; flex-direction: column; }
   display: flex;
   align-items: center;
   gap: 14px;
+  overflow-x: auto;
+  flex: none;
+  scrollbar-width: none;
   padding: 8px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   user-select: none;
-  flex: none;
 }
+#toolbar::-webkit-scrollbar { display: none; }
 
 .brand {
   font-weight: 700;
@@ -82,6 +85,8 @@ button {
 #zoomer button:hover { color: var(--fg); }
 #zoom-reset { min-width: 56px; font-variant-numeric: tabular-nums; }
 button:hover { background: var(--panel-2); }
+#style { font-family: var(--mono); min-width: 40px; color: var(--muted); }
+#style:hover { color: var(--fg); }
 button:disabled { opacity: 0.4; cursor: default; }
 button.active {
   background: var(--accent-dim);
@@ -111,7 +116,9 @@ button.active kbd, button.primary kbd { color: inherit; }
   flex: 1;
   overflow: auto;
   position: relative;
+  scrollbar-width: none;          /* Firefox */
 }
+#stage::-webkit-scrollbar { display: none; }  /* Chrome / Safari */
 
 #world { position: relative; }
 
