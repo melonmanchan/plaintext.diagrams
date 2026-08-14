@@ -6,6 +6,8 @@ export interface BoxShape {
   w: number;
   h: number;
   text: string;
+  /** Border style; absent means square corners. */
+  style?: 'round';
 }
 
 /** Double-line frame that visually encapsulates other shapes. */
@@ -18,6 +20,8 @@ export interface GroupShape {
   h: number;
   /** Title shown in the top-left corner of the frame. */
   text: string;
+  /** Frame style; absent means solid double-line. */
+  style?: 'dashed';
 }
 
 export interface TextShape {
@@ -41,6 +45,8 @@ export interface ArrowShape {
   text?: string;
   /** Arrowhead placement; absent means 'end'. */
   heads?: 'end' | 'both' | 'start';
+  /** Line style; absent means solid. */
+  style?: 'dashed';
 }
 
 export type Shape = BoxShape | GroupShape | ArrowShape | TextShape;

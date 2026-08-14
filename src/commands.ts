@@ -1,7 +1,7 @@
 import { render } from './render';
 import { placeFrom } from './shapes';
 import { app, getShape, pushUndo, save } from './store';
-import type { ArrowShape } from './types';
+import type { ArrowShape, Shape } from './types';
 
 /* ============================================================
  * Selection-level commands shared by toolbar and keyboard.
@@ -17,6 +17,22 @@ export function cycleArrowHeads(): boolean {
   pushUndo();
   for (const a of arrows)
     a.heads = (a.heads ?? 'end') === 'end' ? 'both' : a.heads === 'both' ? 'start' : 'end';
+  save();
+  render();
+  return true;
+}
+
+/** Toggle the kind-appropriate style variant on every selected shape. */
+export function cycleStyle(): boolean {
+  const targets = [...app.selection]
+    .map(getShape)
+    .filter((s): s is Shape => s != null && s.type !== 'text');
+  if (!targets.length) return false;
+  pushUndo();
+  for (const s of targets) {
+    if (s.type === 'arrow' || s.type === 'group') s.style = s.style === 'dashed' ? undefined : 'dashed';
+    else if (s.type === 'box') s.style = s.style === 'round' ? undefined : 'round';
+  }
   save();
   render();
   return true;

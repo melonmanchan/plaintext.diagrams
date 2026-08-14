@@ -42,33 +42,38 @@ function drawGroup(s: GroupShape, put: Put): void {
   const title = (s.text ?? '').split('\n')[0];
   const tabbed = !!title && h >= 5;
   const top = tabbed ? y + 2 : y; // main frame's top border row
+  const dashed = s.style === 'dashed';
+  // Dashed frames drop every other border cell (corners always drawn).
+  const putB = (bx: number, by: number, c: string, force = false) => {
+    if (!dashed || force || (bx + by) % 2 === 0) put(bx, by, c, id, PRI.groupborder);
+  };
 
   if (tabbed) {
     const tw = Math.min(w, title.length + 4);
-    for (let i = 0; i < tw; i++) put(x + i, y, '=', id, PRI.groupborder);
-    put(x, y, '+', id, PRI.groupborder);
-    put(x + tw - 1, y, '+', id, PRI.groupborder);
-    put(x, y + 1, '|', id, PRI.groupborder);
-    put(x + tw - 1, y + 1, '|', id, PRI.groupborder);
+    for (let i = 0; i < tw; i++) putB(x + i, y, '=');
+    putB(x, y, '+', true);
+    putB(x + tw - 1, y, '+', true);
+    putB(x, y + 1, '|');
+    putB(x + tw - 1, y + 1, '|');
     const t = title.slice(0, Math.max(0, tw - 4));
     for (let k = 0; k < t.length; k++) put(x + 2 + k, y + 1, t[k], id, PRI.text);
   }
 
   for (let i = 0; i < w; i++) {
-    put(x + i, top, '=', id, PRI.groupborder);
-    put(x + i, y + h - 1, '=', id, PRI.groupborder);
+    putB(x + i, top, '=');
+    putB(x + i, y + h - 1, '=');
   }
   for (let j = top; j < y + h; j++) {
-    put(x, j, '|', id, PRI.groupborder);
-    put(x + w - 1, j, '|', id, PRI.groupborder);
+    putB(x, j, '|');
+    putB(x + w - 1, j, '|');
   }
-  put(x, top, '+', id, PRI.groupborder);
-  put(x + w - 1, top, '+', id, PRI.groupborder);
-  put(x, y + h - 1, '+', id, PRI.groupborder);
-  put(x + w - 1, y + h - 1, '+', id, PRI.groupborder);
+  putB(x, top, '+', true);
+  putB(x + w - 1, top, '+', true);
+  putB(x, y + h - 1, '+', true);
+  putB(x + w - 1, y + h - 1, '+', true);
   if (tabbed) {
     // junction where the tab's right side meets the frame's top border
-    put(x + Math.min(w, title.length + 4) - 1, top, '+', id, PRI.groupborder);
+    putB(x + Math.min(w, title.length + 4) - 1, top, '+', true);
   }
   if (!tabbed && s.text && h > 2) {
     // frame too short for a tab: fall back to inline title
@@ -89,10 +94,11 @@ function drawBox(s: BoxShape, put: Put): void {
     put(x, y + j, '|', id, PRI.boxborder);
     put(x + w - 1, y + j, '|', id, PRI.boxborder);
   }
-  put(x, y, '+', id, PRI.boxborder);
-  put(x + w - 1, y, '+', id, PRI.boxborder);
-  put(x, y + h - 1, '+', id, PRI.boxborder);
-  put(x + w - 1, y + h - 1, '+', id, PRI.boxborder);
+  const [tl, tr, bl, br] = s.style === 'round' ? ['.', '.', "'", "'"] : ['+', '+', '+', '+'];
+  put(x, y, tl, id, PRI.boxborder);
+  put(x + w - 1, y, tr, id, PRI.boxborder);
+  put(x, y + h - 1, bl, id, PRI.boxborder);
+  put(x + w - 1, y + h - 1, br, id, PRI.boxborder);
 
   const iw = w - 2, ih = h - 2;
   if (s.text && iw > 0 && ih > 0) {
@@ -122,14 +128,20 @@ function drawArrow(s: ArrowShape, shapes: Shape[], put: Put): void {
     put(pts[0].x, pts[0].y, '>', s.id, PRI.head);
     return;
   }
+  // Dashed arrows drop every other cell; segment endpoints are always
+  // drawn so bends and head/tail stay connected.
+  const dashed = s.style === 'dashed';
+  const putL = (x: number, y: number, c: string, force: boolean) => {
+    if (!dashed || force || (x + y) % 2 === 0) put(x, y, c, s.id, PRI.line);
+  };
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1];
     if (a.y === b.y) {
       const lo = Math.min(a.x, b.x), hi = Math.max(a.x, b.x);
-      for (let x = lo; x <= hi; x++) put(x, a.y, '-', s.id, PRI.line);
+      for (let x = lo; x <= hi; x++) putL(x, a.y, '-', x === lo || x === hi);
     } else {
       const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
-      for (let y = lo; y <= hi; y++) put(a.x, y, '|', s.id, PRI.line);
+      for (let y = lo; y <= hi; y++) putL(a.x, y, '|', y === lo || y === hi);
     }
   }
   for (let i = 1; i < pts.length - 1; i++)
@@ -228,6 +240,10 @@ export function stylize(r: Raster): string[] {
             (connects(x, y - 1, 'v') ? 4 : 0) |
             (connects(x, y + 1, 'v') ? 8 : 0);
           out[i] = UNI_JUNCTION[mask] ?? '┼';
+        } else if (c === '.') {
+          out[i] = connects(x - 1, y, 'h') ? '╮' : '╭';
+        } else if (c === "'") {
+          out[i] = connects(x - 1, y, 'h') ? '╯' : '╰';
         } else out[i] = c;
       } else out[i] = c;
     }

@@ -1,4 +1,4 @@
-import { clearAll, cycleArrowHeads, deleteSelected, nudge } from './commands';
+import { clearAll, cycleArrowHeads, cycleStyle, deleteSelected, nudge } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
@@ -18,10 +18,10 @@ const $ = <T extends Element = HTMLElement>(sel: string): T =>
 
 const HINTS: Record<Tool, string> = {
   select: 'click: select · shift-click / drag: multi-select · cmd-click: new box · middle-drag: pan · type: edit label · del: delete',
-  box: 'drag to draw a box, then just type to label it',
-  arrow: 'drag from source to target — endpoints inside a box snap to it · type to label · right-click / cmd+B: cycle heads',
+  box: 'drag to draw a box, then just type to label it · cmd+D: rounded corners',
+  arrow: 'drag from source to target — snaps to boxes · type to label · right-click / cmd+B: heads · cmd+D: dashed',
   text: 'click anywhere to place free-standing text',
-  group: 'drag to draw a group frame — moving it carries everything inside · type to title it',
+  group: 'drag to draw a group frame — moving it carries everything inside · type to title it · cmd+D: dashed',
 };
 
 export function hintText(cx: number, cy: number): string {
@@ -279,6 +279,10 @@ function onKeyDown(e: KeyboardEvent): void {
   if (mod && e.key === '0') { e.preventDefault(); setZoom(1); return; }
   if (mod && e.key.toLowerCase() === 'b') {
     if (cycleArrowHeads()) e.preventDefault();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === 'd') {
+    if (cycleStyle()) e.preventDefault();
     return;
   }
   if (mod && e.key.toLowerCase() === 'a') {

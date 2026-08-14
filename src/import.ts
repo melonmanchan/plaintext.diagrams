@@ -21,11 +21,12 @@ const UNI_TO_ASCII: Record<string, string> = {
   '═': '=', '║': '|',
   '╔': '+', '╗': '+', '╚': '+', '╝': '+',
   '╠': '+', '╣': '+', '╦': '+', '╩': '+', '╬': '+',
+  '╭': '.', '╮': '.', '╰': "'", '╯': "'",
   '▶': '>', '►': '>', '◀': '<', '◄': '<', '▼': 'v', '▲': '^',
 };
 
 export function parseAscii(text: string): Shape[] {
-  const normalized = text.replace(/[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
+  const normalized = text.replace(/[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
   const lines = normalized.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, ''));
   const H = lines.length;
   const at = (x: number, y: number): string =>
@@ -49,20 +50,45 @@ export function parseAscii(text: string): Shape[] {
    */
 
   const sideOk = (c: string) => isV(c) || c === '-';
-  const takeSide = (x: number, y: number) => { if (at(x, y) !== '-') take(x, y); };
-  const takeEdge = (x: number, y: number) => { if (at(x, y) !== '|') take(x, y); };
+  const takeSide = (x: number, y: number) => { const c = at(x, y); if (c !== '-' && c !== ' ') take(x, y); };
+  const takeEdge = (x: number, y: number) => { const c = at(x, y); if (c !== '|' && c !== ' ') take(x, y); };
 
-  function rectBottom(x1: number, x2: number, y1: number, horiz: (c: string) => boolean): number | null {
+  /**
+   * Walk two side columns down to the corner row and verify/consume the
+   * rectangle. `corner` is the expected bottom-corner char; `allowGaps`
+   * tolerates single missing border cells (dashed frames).
+   */
+  function rectBottom(
+    x1: number, x2: number, y1: number,
+    horiz: (c: string) => boolean, corner: string, allowGaps: boolean,
+  ): { y2: number; gapped: boolean } | null {
     if (x2 - x1 < 2) return null;
     const edgeOk = (c: string) => horiz(c) || c === '|';
-    for (let y2 = y1 + 1; sideOk(at(x1, y2)) && sideOk(at(x2, y2)); y2++) {
-      if (at(x1, y2) !== '+' || at(x2, y2) !== '+' || y2 - y1 < 2) continue;
-      let ok = true;
-      for (let i = x1 + 1; i < x2 && ok; i++) ok = edgeOk(at(i, y2));
-      if (!ok) continue; // junction row — keep scanning down
-      for (let i = x1; i <= x2; i++) { takeEdge(i, y1); takeEdge(i, y2); }
-      for (let j = y1; j <= y2; j++) { takeSide(x1, j); takeSide(x2, j); }
-      return y2;
+    let gapped = false;
+    let blankL = false, blankR = false;
+    for (let y2 = y1 + 1; y2 <= H; y2++) {
+      const cl = at(x1, y2), cr = at(x2, y2);
+      if (cl === corner && cr === corner && y2 - y1 >= 2) {
+        let ok = true, blanks = 0, present = 0;
+        for (let i = x1 + 1; i < x2 && ok; i++) {
+          const c = at(i, y2);
+          if (edgeOk(c)) { blanks = 0; present++; continue; }
+          if (allowGaps && c === ' ' && blanks === 0) { blanks = 1; gapped = true; continue; }
+          ok = false;
+        }
+        if (ok && present > 0) {
+          for (let i = x1; i <= x2; i++) { takeEdge(i, y1); takeEdge(i, y2); }
+          for (let j = y1; j <= y2; j++) { takeSide(x1, j); takeSide(x2, j); }
+          return { y2, gapped };
+        }
+      }
+      const contL = sideOk(cl) || cl === corner
+        ? (blankL = false, true)
+        : allowGaps && cl === ' ' && !blankL ? (blankL = true, gapped = true, true) : false;
+      const contR = sideOk(cr) || cr === corner
+        ? (blankR = false, true)
+        : allowGaps && cr === ' ' && !blankR ? (blankR = true, gapped = true, true) : false;
+      if (!contL || !contR) return null;
     }
     return null;
   }
@@ -74,39 +100,52 @@ export function parseAscii(text: string): Shape[] {
   //   +=======+
   //   | Title |
   //   +=======+==============+   ← frame top continues right of the tab
+  // Dashed variants drop every other border cell.
   function groupAt(x: number, y: number): GroupShape | null {
-    const hgTop = topOk(isHG);
-    for (let x2 = x + 1; hgTop(at(x2, y)); x2++) {
-      if (at(x2, y) !== '+' || !lines[y].slice(x + 1, x2).includes('=')) continue;
-      for (let yb = y + 1; sideOk(at(x, yb)) && sideOk(at(x2, yb)); yb++) {
-        if (at(x, yb) !== '+' || at(x2, yb) !== '+') continue;
-        if (at(x2 + 1, yb) === '=') {
-          // tab: the corner row continues right into the frame's top border
-          if (yb - y !== 2) break;
-          for (let xr = x2 + 1; hgTop(at(xr, yb)); xr++) {
-            if (at(xr, yb) !== '+') continue;
-            const yBot = rectBottom(x, xr, yb, isHG);
-            if (yBot == null) continue;
-            for (let i = x; i <= x2; i++) takeEdge(i, y);
-            takeSide(x, y + 1);
-            takeSide(x2, y + 1);
-            let title = '';
-            for (let i = x + 2; i <= x2 - 2; i++) {
-              title += free(i, y + 1) ? at(i, y + 1) : ' ';
-              take(i, y + 1);
-            }
-            return { type: 'group', id: seq++, x, y, w: xr - x + 1, h: yBot - y + 1, text: title.trim() };
+    let topBlank = 0;
+    for (let x2 = x + 1; x2 <= (lines[y]?.length ?? 0) + 1; x2++) {
+      const c = at(x2, y);
+      if (isHG(c) || c === '|') topBlank = 0;
+      else if (c === ' ' && topBlank === 0) { topBlank = 1; continue; }
+      else break;
+      if (c !== '+' || !lines[y].slice(x + 1, x2).includes('=')) continue;
+
+      const tabRow = y + 2;
+      const tabSideOk = (cc: string) => sideOk(cc) || cc === ' ';
+      const isTab =
+        at(x, tabRow) === '+' && at(x2, tabRow) === '+' &&
+        tabSideOk(at(x, y + 1)) && tabSideOk(at(x2, y + 1)) &&
+        (at(x2 + 1, tabRow) === '=' ||
+          (at(x2 + 1, tabRow) === ' ' && at(x2 + 2, tabRow) === '='));
+      if (isTab) {
+        let blanks = 0;
+        for (let xr = x2 + 1; xr <= (lines[tabRow]?.length ?? 0) + 1; xr++) {
+          const cc = at(xr, tabRow);
+          if (isHG(cc) || cc === '|') blanks = 0;
+          else if (cc === ' ' && blanks === 0) { blanks = 1; continue; }
+          else break;
+          if (cc !== '+') continue;
+          const hit = rectBottom(x, xr, tabRow, isHG, '+', true);
+          if (!hit) continue;
+          for (let i = x; i <= x2; i++) takeEdge(i, y);
+          takeSide(x, y + 1);
+          takeSide(x2, y + 1);
+          let title = '';
+          for (let i = x + 2; i <= x2 - 2; i++) {
+            title += free(i, y + 1) ? at(i, y + 1) : ' ';
+            take(i, y + 1);
           }
-          break;
+          const g: GroupShape = { type: 'group', id: seq++, x, y, w: xr - x + 1, h: hit.y2 - y + 1, text: title.trim() };
+          if (hit.gapped) g.style = 'dashed';
+          return g;
         }
-        if (yb - y < 2) continue;
-        let ok = true;
-        const edge = topOk(isHG);
-        for (let i = x + 1; i < x2 && ok; i++) ok = edge(at(i, yb));
-        if (!ok) continue;
-        for (let i = x; i <= x2; i++) { takeEdge(i, y); takeEdge(i, yb); }
-        for (let j = y; j <= yb; j++) { takeSide(x, j); takeSide(x2, j); }
-        return { type: 'group', id: seq++, x, y, w: x2 - x + 1, h: yb - y + 1, text: '' };
+        return null;
+      }
+      const hit = rectBottom(x, x2, y, isHG, '+', true);
+      if (hit) {
+        const g: GroupShape = { type: 'group', id: seq++, x, y, w: x2 - x + 1, h: hit.y2 - y + 1, text: '' };
+        if (hit.gapped) g.style = 'dashed';
+        return g;
       }
     }
     return null;
@@ -122,12 +161,18 @@ export function parseAscii(text: string): Shape[] {
 
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < lines[y].length; x++) {
-      if (at(x, y) !== '+' || !free(x, y)) continue;
-      for (let x2 = x + 1; topOk(isH)(at(x2, y)); x2++) {
-        if (at(x2, y) !== '+') continue;
-        const y2 = rectBottom(x, x2, y, isH);
-        if (y2 != null) {
-          boxes.push({ type: 'box', id: seq++, x, y, w: x2 - x + 1, h: y2 - y + 1, text: '' });
+      const c0 = at(x, y);
+      if ((c0 !== '+' && c0 !== '.') || !free(x, y)) continue;
+      const round = c0 === '.';
+      const tr = round ? '.' : '+';
+      const hTop = topOk(isH);
+      for (let x2 = x + 1; hTop(at(x2, y)) || at(x2, y) === tr; x2++) {
+        if (at(x2, y) !== tr) continue;
+        const hit = rectBottom(x, x2, y, isH, round ? "'" : '+', false);
+        if (hit != null) {
+          const b: BoxShape = { type: 'box', id: seq++, x, y, w: x2 - x + 1, h: hit.y2 - y + 1, text: '' };
+          if (round) b.style = 'round';
+          boxes.push(b);
           break;
         }
       }
@@ -154,13 +199,17 @@ export function parseAscii(text: string): Shape[] {
     ];
     let dir: [number, number] = back;
     for (const p of probes) {
-      const c = at(hx + p[0], hy + p[1]);
-      if (free(hx + p[0], hy + p[1]) && (c === lineOf(p) || c === '+')) { dir = p; break; }
+      const c1 = at(hx + p[0], hy + p[1]);
+      if (free(hx + p[0], hy + p[1]) && (c1 === lineOf(p) || c1 === '+')) { dir = p; break; }
+      // dashed lines may start with a gap right behind the head
+      const c2 = at(hx + p[0] * 2, hy + p[1] * 2);
+      if (c1 === ' ' && free(hx + p[0] * 2, hy + p[1] * 2) && c2 === lineOf(p)) { dir = p; break; }
     }
     const cells: [number, number][] = [[hx, hy]];
     const labelCells: [number, number][] = [];
     let label = '';
     let dual = false;
+    let singleGaps = 0;
     let cx = hx + dir[0], cy = hy + dir[1];
 
     for (;;) {
@@ -212,6 +261,7 @@ export function parseAscii(text: string): Shape[] {
         gap.push([gx, gy]);
       }
       if (blocked || resume < 0) break;
+      if (resume === 1 && gap.length === 1 && at(gap[0][0], gap[0][1]) === ' ') singleGaps++;
       if (dir[1] === 0) {
         const chars = gap.map(([gx, gy]) => at(gx, gy));
         if (dir[0] < 0) chars.reverse();
@@ -253,6 +303,7 @@ export function parseAscii(text: string): Shape[] {
     const a: ArrowShape = { type: 'arrow', id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
     if (label) a.text = label;
     if (dual) a.heads = 'both';
+    if (singleGaps >= 2 && singleGaps * 2 >= cells.length - 2) a.style = 'dashed';
     return a;
   }
 
