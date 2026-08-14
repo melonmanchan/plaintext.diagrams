@@ -63,6 +63,8 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
           : { x: s.x + 2, y: s.y + 1 } // title slot in the frame's top-left
         : { x: s.x, y: s.y };
     const ox = at.x, oy = at.y;
+    const centered = s.type === 'arrow'; // labels render centered on the midpoint
+    if (centered) ta.style.textAlign = 'center';
     ta.style.left = ox * CW + 'px';
     ta.style.top = oy * CH + 'px';
     const fit = () => {
@@ -70,6 +72,7 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
       const wch = Math.max(8, ...lines.map((l) => l.length)) + 2;
       ta.style.width = wch * CW + 'px';
       ta.style.height = Math.max(1, lines.length) * CH + 4 + 'px';
+      if (centered) ta.style.left = (ox + 0.5) * CW - (wch * CW) / 2 + 'px';
     };
     ta.addEventListener('input', fit);
     fit();

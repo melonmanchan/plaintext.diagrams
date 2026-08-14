@@ -326,13 +326,16 @@ function anchorOn(b: BoxShape, side: Side, cross: number): { x: number; y: numbe
  * Once that side is full, remaining arrows wrap onto the two
  * perpendicular sides.
  */
-function anchorFor(b: BoxShape, o: Point, slot: number, off: number): { x: number; y: number; axis: 'h' | 'v'; side: Side } {
+function sideFor(b: BoxShape, o: Point): Side {
   const cx = b.x + (b.w - 1) / 2, cy = b.y + (b.h - 1) / 2;
   const ndx = (o.x - cx) / Math.max(1, b.w / 2);
   const ndy = (o.y - cy) / Math.max(1, b.h / 2);
-  const side: Side = Math.abs(ndx) >= Math.abs(ndy)
+  return Math.abs(ndx) >= Math.abs(ndy)
     ? (ndx >= 0 ? 'right' : 'left')
     : (ndy >= 0 ? 'bottom' : 'top');
+}
+
+function anchorFor(b: BoxShape, o: Point, side: Side, slot: number, off: number): { x: number; y: number; axis: 'h' | 'v'; side: Side } {
   const vertical = side === 'left' || side === 'right';
   const span = vertical ? b.h - 2 : b.w - 2;
   const cap = Math.max(1, (span + 1) >> 1);
@@ -374,28 +377,59 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   };
   const b1 = boxOf(a.box1), b2 = boxOf(a.box2);
 
-  // Arrows sharing the same attached pair get spread across border
-  // slots (and distinct mid-lines) instead of overlapping.
-  let slot = 0, off = 0;
-  if (b1 && b2) {
-    const siblings = shapes.filter((s): s is ArrowShape =>
-      s.type === 'arrow' &&
-      ((s.box1 === a.box1 && s.box2 === a.box2) || (s.box1 === a.box2 && s.box2 === a.box1)));
-    if (siblings.length > 1) {
-      slot = siblings.findIndex((s) => s.id === a.id);
-      // Center-out: slot 0 stays on the natural line, later slots
-      // alternate outward (-2, +2, -4, +4 …) matching overflow wrap.
-      off = (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2;
+  // Arrow endpoints whose natural anchor lands on the same cell of the same
+  // box side get spread across slots — regardless of where their other end
+  // goes — so distinct arrows never overlap into a shared rail (which
+  // parses ambiguously). Endpoints that naturally separate keep their spot.
+  const center = (b: BoxShape): Point => ({ x: b.x + (b.w >> 1), y: b.y + (b.h >> 1) });
+  const slotOn = (b: BoxShape, side: Side, o: Point, which: 1 | 2): { slot: number; off: number } => {
+    const vertical = side === 'left' || side === 'right';
+    const cellOf = (t: Point): number => vertical
+      ? clamp(Math.round(t.y), b.y + 1, b.y + b.h - 2)
+      : clamp(Math.round(t.x), b.x + 1, b.x + b.w - 2);
+    const cell = cellOf(o);
+    const entries: { id: number; which: 1 | 2 }[] = [];
+    for (const s of shapes) {
+      if (s.type !== 'arrow') continue;
+      const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
+      if (sb1 === b) {
+        const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
+        if (sideFor(b, t) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 1 });
+      }
+      if (sb2 === b) {
+        const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
+        if (sideFor(b, t) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 2 });
+      }
     }
-  }
+    if (entries.length <= 1) return { slot: 0, off: 0 };
+    const slot = Math.max(0, entries.findIndex((e) => e.id === a.id && e.which === which));
+    // Center-out: slot 0 stays on the natural line, later slots
+    // alternate outward (-2, +2, -4, +4 …) matching overflow wrap.
+    return { slot, off: (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2 };
+  };
 
   let p1: Point = { x: a.x1, y: a.y1 }, p2: Point = { x: a.x2, y: a.y2 };
   let ax1: 'h' | 'v' | null = null, ax2: 'h' | 'v' | null = null;
   let side1: Side | null = null, side2: Side | null = null;
+  let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
-  if (b1) { const an = anchorFor(b1, o1, slot, off); p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y; }
-  if (b2) { const an = anchorFor(b2, o2, slot, off); p2 = { x: an.x, y: an.y }; ax2 = an.axis; side2 = an.side; a.x2 = an.x; a.y2 = an.y; }
+  if (b1) {
+    const side = sideFor(b1, o1);
+    const { slot, off } = slotOn(b1, side, o1, 1);
+    off1 = off;
+    const an = anchorFor(b1, o1, side, slot, off);
+    p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y;
+  }
+  if (b2) {
+    const side = sideFor(b2, o2);
+    const { slot, off } = slotOn(b2, side, o2, 2);
+    off2 = off;
+    const an = anchorFor(b2, o2, side, slot, off);
+    p2 = { x: an.x, y: an.y }; ax2 = an.axis; side2 = an.side; a.x2 = an.x; a.y2 = an.y;
+  }
+  // Mid-line spread offset: parallel Z-routes keep distinct mid-lines.
+  const off = off1 !== 0 ? off1 : off2;
 
   // A 1-cell jog between opposite side anchors reads badly in ASCII:
   // nudge one anchor into line when the border span allows it.

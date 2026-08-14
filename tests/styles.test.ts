@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportAscii } from '../src/export';
 import { parseAscii } from '../src/import';
-import { applyLaneSlots, captureLaneSlots } from '../src/shapes';
+import { applyGroupSlots, captureGroupSlots } from '../src/shapes';
 import type { ArrowShape, BoxShape, GroupShape, Shape } from '../src/types';
 
 const box = (id: number, x: number, y: number, w: number, h: number, text = ''): BoxShape =>
@@ -124,18 +124,33 @@ describe('swimlanes', () => {
     // lane edges at 0,20,40,60 → lane B interior is 21..39
     const b: BoxShape = box(2, 24, 6, 10, 3, 'In-B');
     const shapes: Shape[] = [g, b];
-    const slots = captureLaneSlots(g, shapes);
+    const slots = captureGroupSlots(g, shapes);
     expect(slots).toHaveLength(1);
     expect(slots[0].lane).toBe(1);
     // widen the group: lanes move; the box must stay inside lane B
     g.w = 91; // edges now 0,30,60,90 → lane B interior 31..59
-    applyLaneSlots(g, shapes, slots);
+    applyGroupSlots(g, shapes, slots);
     expect(b.x).toBeGreaterThan(30);
     expect(b.x + b.w - 1).toBeLessThan(60);
     // shrink hard: lane B interior 11..19 (w=31) — box clamps inside
     g.w = 31;
-    applyLaneSlots(g, shapes, slots);
+    applyGroupSlots(g, shapes, slots);
     expect(b.x).toBeGreaterThan(10);
     expect(b.x + b.w - 1).toBeLessThan(21);
+  });
+
+  it('resizing a plain group keeps contents inside the frame', () => {
+    const g = group(1, 0, 0, 40, 14, 'T'); // tabbed: main frame top at y+2
+    const b: BoxShape = box(2, 25, 8, 10, 3, 'In');
+    const shapes: Shape[] = [g, b];
+    const slots = captureGroupSlots(g, shapes);
+    expect(slots).toHaveLength(1);
+    // shrink hard: interior is 1..18 wide, rows 3..12
+    g.w = 20; g.h = 13;
+    applyGroupSlots(g, shapes, slots);
+    expect(b.x).toBeGreaterThan(0);
+    expect(b.x + b.w - 1).toBeLessThan(19);
+    expect(b.y).toBeGreaterThan(2);
+    expect(b.y + b.h - 1).toBeLessThan(12);
   });
 });

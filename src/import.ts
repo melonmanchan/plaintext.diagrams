@@ -234,9 +234,36 @@ export function parseAscii(text: string): Shape[] {
     let singleGaps = 0;
     let cx = hx + dir[0], cy = hy + dir[1];
 
+    /** Follow a rail (straight through junctions, unique turns) to its end —
+     * a rail terminating in a head belongs to another arrow, not ours. */
+    const railEndsAtHead = (jx: number, jy: number, d0: [number, number]): boolean => {
+      let x = jx, y = jy;
+      let d = d0;
+      for (let k = 0; k < 512; k++) {
+        x += d[0]; y += d[1];
+        const c = at(x, y);
+        if (c in HEAD_DIR) return true;
+        if (isLine(c, d)) continue;
+        if (c !== '+') return false;
+        const s2 = at(x + d[0], y + d[1]);
+        if (isLine(s2, d) || s2 === '+' || s2 in HEAD_DIR) continue; // straight through
+        const pp: [number, number][] = d[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
+        const opts = pp.filter(([px, py]) => {
+          const c2 = at(x + px, y + py);
+          return isLine(c2, [px, py]) || c2 === '+' || c2 in HEAD_DIR;
+        });
+        if (opts.length !== 1) return false;
+        d = opts[0];
+      }
+      return false;
+    };
+
     for (;;) {
+      if (cells.length > 4096) break; // defensive: no closed-loop walks
       const ch = at(cx, cy);
-      if (free(cx, cy) && isLine(ch, dir)) {
+      if (isLine(ch, dir)) {
+        // Free cells are ours; consumed matching cells are a shared rail
+        // (two arrows overlapping the same approach) — ride them through.
         cells.push([cx, cy]);
         cx += dir[0]; cy += dir[1];
         continue;
@@ -248,23 +275,32 @@ export function parseAscii(text: string): Shape[] {
         break;
       }
       if (ch === '+') {
-        // Crossing/junction: prefer continuing straight through.
         const sx = cx + dir[0], sy = cy + dir[1];
-        if (isLine(at(sx, sy), dir) && free(sx, sy)) {
-          if (free(cx, cy)) { cells.push([cx, cy]); } // shared junction may be consumed
+        const straightOk = isLine(at(sx, sy), dir);
+        const options: [number, number][] = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
+        const turns = options.filter(([px, py]) => {
+          const nc = at(cx + px, cy + py);
+          return free(cx + px, cy + py) && (isLine(nc, [px, py]) || nc === '+');
+        });
+        // T-merge: the straight rail continues into another arrow's own
+        // head — our line is the branch turning here.
+        if (straightOk && turns.length === 1 && railEndsAtHead(cx, cy, dir)) {
+          if (free(cx, cy)) cells.push([cx, cy]);
+          dir = turns[0];
+          cx += dir[0]; cy += dir[1];
+          continue;
+        }
+        // Crossing/junction: prefer continuing straight through (shared
+        // junctions and rails may already be consumed).
+        if (straightOk) {
+          if (free(cx, cy)) cells.push([cx, cy]);
           cx = sx; cy = sy;
           continue;
         }
-        if (free(cx, cy)) {
+        if (free(cx, cy) && turns.length) {
           // Bend: turn onto the perpendicular continuation.
           cells.push([cx, cy]);
-          const options: [number, number][] = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
-          const turn = options.find(([px, py]) => {
-            const nc = at(cx + px, cy + py);
-            return free(cx + px, cy + py) && (isLine(nc, [px, py]) || nc === '+');
-          });
-          if (!turn) break;
-          dir = turn;
+          dir = turns[0];
           cx += dir[0]; cy += dir[1];
           continue;
         }
@@ -294,7 +330,7 @@ export function parseAscii(text: string): Shape[] {
         // Vertical line: a label overlays it as a horizontal text run
         // crossing our column — capture that run as the arrow's label.
         for (const [gx, gy] of gap) {
-          if (at(gx, gy) === ' ') continue;
+          if (at(gx, gy) === ' ' || !free(gx, gy)) continue; // blank or another arrow's label
           const stopChar = (c: string) => c === '-' || c === '|' || c === ':' || c === '+' || c === '=';
           let lo = gx, hi = gx;
           while (free(lo - 1, gy) && !stopChar(at(lo - 1, gy)) &&

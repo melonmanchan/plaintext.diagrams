@@ -111,11 +111,20 @@ export function laneBounds(g: GroupShape): number[] {
   return Array.from({ length: n - 1 }, (_, i) => g.x + Math.round(((i + 1) * (g.w - 1)) / n));
 }
 
-/** Capture which lane each contained shape occupies (slot-keeping resize). */
-export function captureLaneSlots(g: GroupShape, shapes: Shape[]): LaneSlot[] {
-  if ((g.lanes?.length ?? 0) < 2) return [];
-  const edges = [g.x, ...laneBounds(g), g.x + g.w - 1];
-  const contentTop = groupTopRow(g) + 3;
+/** Lane interiors as [start, end] column pairs; a laneless group is one lane. */
+function laneEdges(g: GroupShape): number[] {
+  return [g.x, ...laneBounds(g), g.x + g.w - 1];
+}
+
+/** First interior content row (below the lane header band when present). */
+function contentTopOf(g: GroupShape): number {
+  return groupTopRow(g) + ((g.lanes?.length ?? 0) >= 2 ? 3 : 1);
+}
+
+/** Capture which lane slot each contained shape occupies (slot-keeping resize). */
+export function captureGroupSlots(g: GroupShape, shapes: Shape[]): LaneSlot[] {
+  const edges = laneEdges(g);
+  const contentTop = contentTopOf(g);
   const out: LaneSlot[] = [];
   for (const s of shapes) {
     if (s.id === g.id || s.type === 'arrow' || !insideGroup(s, g)) continue;
@@ -127,17 +136,17 @@ export function captureLaneSlots(g: GroupShape, shapes: Shape[]): LaneSlot[] {
   return out;
 }
 
-/** Re-place captured shapes inside their lanes after the group resized. */
-export function applyLaneSlots(g: GroupShape, shapes: Shape[], slots: LaneSlot[]): void {
-  if ((g.lanes?.length ?? 0) < 2) return;
-  const edges = [g.x, ...laneBounds(g), g.x + g.w - 1];
-  const contentTop = groupTopRow(g) + 3;
+/** Re-place captured shapes inside their lane slots after the group resized. */
+export function applyGroupSlots(g: GroupShape, shapes: Shape[], slots: LaneSlot[]): void {
+  const edges = laneEdges(g);
+  const contentTop = contentTopOf(g);
   const bottom = g.y + g.h - 1;
   for (const slot of slots) {
     const s = shapes.find((sh) => sh.id === slot.id);
-    if (!s || s.type === 'arrow' || slot.lane >= edges.length - 1) continue;
-    const laneStart = edges[slot.lane] + 1;
-    const laneEnd = edges[slot.lane + 1] - 1;
+    if (!s || s.type === 'arrow') continue;
+    const lane = Math.min(slot.lane, edges.length - 2);
+    const laneStart = edges[lane] + 1;
+    const laneEnd = edges[lane + 1] - 1;
     const sw = s.type === 'text'
       ? Math.max(...(s.text || ' ').split('\n').map((l) => l.length))
       : s.w;
