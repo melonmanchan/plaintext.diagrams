@@ -52,7 +52,7 @@ export function startEdit(s: Shape, seed?: string): void {
     sync();
   } else {
     const at = s.type === 'arrow'
-      ? pathMidpoint(resolveArrow(s, app.doc.shapes))
+      ? pathMidpoint(resolveArrow(s, app.doc.shapes).pts)
       : { x: s.x, y: s.y };
     const ox = at.x, oy = at.y;
     ta.style.left = ox * CW + 'px';

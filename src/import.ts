@@ -75,8 +75,19 @@ export function parseAscii(text: string): Shape[] {
   }
 
   function traceArrow(hx: number, hy: number, head: [number, number]): ArrowShape | null {
-    let dir: [number, number] = [-head[0], -head[1]];
     const lineOf = (v: [number, number]) => (v[1] === 0 ? '-' : '|');
+    // The line usually continues straight behind the head, but heads that
+    // point into a box may be approached perpendicular (e.g. "----^").
+    const back: [number, number] = [-head[0], -head[1]];
+    const probes: [number, number][] = [
+      back,
+      ...(head[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]]) as [number, number][],
+    ];
+    let dir: [number, number] = back;
+    for (const p of probes) {
+      const c = at(hx + p[0], hy + p[1]);
+      if (free(hx + p[0], hy + p[1]) && (c === lineOf(p) || c === '+')) { dir = p; break; }
+    }
     const cells: [number, number][] = [[hx, hy]];
     const labelCells: [number, number][] = [];
     let label = '';

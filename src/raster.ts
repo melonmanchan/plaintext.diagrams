@@ -71,8 +71,11 @@ function drawText(s: TextShape, put: Put): void {
   });
 }
 
+/** Head glyph pointing INTO a box anchored on the given side. */
+const INTO_HEAD: Record<Side, string> = { left: '>', right: '<', top: 'v', bottom: '^' };
+
 function drawArrow(s: ArrowShape, shapes: Shape[], put: Put): void {
-  const pts = resolveArrow(s, shapes);
+  const { pts, into1, into2 } = resolveArrow(s, shapes);
   if (pts.length < 2) {
     put(pts[0].x, pts[0].y, '>', s.id, PRI.head);
     return;
@@ -93,12 +96,12 @@ function drawArrow(s: ArrowShape, shapes: Shape[], put: Put): void {
   const heads = s.heads ?? 'end';
   if (heads !== 'start') {
     const a = pts[pts.length - 2], b = pts[pts.length - 1];
-    const head = b.x > a.x ? '>' : b.x < a.x ? '<' : b.y > a.y ? 'v' : '^';
+    const head = into2 ?? (b.x > a.x ? '>' : b.x < a.x ? '<' : b.y > a.y ? 'v' : '^');
     put(b.x, b.y, head, s.id, PRI.head);
   }
   if (heads !== 'end') {
     const a0 = pts[1], b0 = pts[0];
-    const tail = b0.x > a0.x ? '>' : b0.x < a0.x ? '<' : b0.y > a0.y ? 'v' : '^';
+    const tail = into1 ?? (b0.x > a0.x ? '>' : b0.x < a0.x ? '<' : b0.y > a0.y ? 'v' : '^');
     put(b0.x, b0.y, tail, s.id, PRI.head);
   }
 
@@ -178,18 +181,55 @@ export function pathMidpoint(pts: Point[]): Point {
   return pts[0];
 }
 
+type Side = 'left' | 'right' | 'top' | 'bottom';
+
+/** Cell just OUTSIDE a given border side, at `cross` along it (clamped). */
+function anchorOn(b: BoxShape, side: Side, cross: number): { x: number; y: number; axis: 'h' | 'v' } {
+  if (side === 'right') return { x: b.x + b.w, y: clamp(cross, b.y + 1, b.y + b.h - 2), axis: 'h' };
+  if (side === 'left') return { x: b.x - 1, y: clamp(cross, b.y + 1, b.y + b.h - 2), axis: 'h' };
+  if (side === 'bottom') return { x: clamp(cross, b.x + 1, b.x + b.w - 2), y: b.y + b.h, axis: 'v' };
+  return { x: clamp(cross, b.x + 1, b.x + b.w - 2), y: b.y - 1, axis: 'v' };
+}
+
 /**
- * Pick the border side of `b` facing `o`; returns the cell just OUTSIDE it.
- * `off` shifts the anchor along the side (parallel-arrow spreading).
+ * Anchor for slot `slot` of a group of parallel arrows aimed at `o`,
+ * placed `off` cells from the natural anchor along the facing side.
+ * Once that side is full, remaining arrows wrap onto the two
+ * perpendicular sides.
  */
-function anchor(b: BoxShape, o: Point, off = 0): { x: number; y: number; axis: 'h' | 'v' } {
+function anchorFor(b: BoxShape, o: Point, slot: number, off: number): { x: number; y: number; axis: 'h' | 'v'; side: Side } {
   const cx = b.x + (b.w - 1) / 2, cy = b.y + (b.h - 1) / 2;
-  const dx = (o.x - cx) / Math.max(1, b.w / 2);
-  const dy = (o.y - cy) / Math.max(1, b.h / 2);
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return { x: dx >= 0 ? b.x + b.w : b.x - 1, y: clamp(o.y + off, b.y + 1, b.y + b.h - 2), axis: 'h' };
+  const ndx = (o.x - cx) / Math.max(1, b.w / 2);
+  const ndy = (o.y - cy) / Math.max(1, b.h / 2);
+  const side: Side = Math.abs(ndx) >= Math.abs(ndy)
+    ? (ndx >= 0 ? 'right' : 'left')
+    : (ndy >= 0 ? 'bottom' : 'top');
+  const vertical = side === 'left' || side === 'right';
+  const span = vertical ? b.h - 2 : b.w - 2;
+  const cap = Math.max(1, (span + 1) >> 1);
+
+  if (slot < cap) {
+    return { ...anchorOn(b, side, Math.round((vertical ? o.y : o.x) + off)), side };
   }
-  return { x: clamp(o.x + off, b.x + 1, b.x + b.w - 2), y: dy >= 0 ? b.y + b.h : b.y - 1, axis: 'v' };
+  // Overflow: alternate between the two perpendicular sides, hugging
+  // the corner that faces the target and stepping inward.
+  const ovf = slot - cap;
+  const inset = (Math.floor(ovf / 2) + 1) * 2;
+  if (vertical) {
+    const oside: Side = ovf % 2 ? 'bottom' : 'top';
+    const cross = side === 'right' ? b.x + b.w - 1 - inset : b.x + inset;
+    return { ...anchorOn(b, oside, cross), side: oside };
+  }
+  const oside: Side = ovf % 2 ? 'right' : 'left';
+  const cross = side === 'bottom' ? b.y + b.h - 1 - inset : b.y + inset;
+  return { ...anchorOn(b, oside, cross), side: oside };
+}
+
+/** Resolved arrow: orthogonal path plus into-box head overrides. */
+export interface ResolvedArrow {
+  pts: Point[];
+  into1: string | null;
+  into2: string | null;
 }
 
 /**
@@ -197,7 +237,7 @@ function anchor(b: BoxShape, o: Point, off = 0): { x: number; y: number; axis: '
  * Writes resolved anchors back into the arrow so a later detach
  * (e.g. deleting the box) keeps the endpoint where it last was.
  */
-export function resolveArrow(a: ArrowShape, shapes: Shape[]): Point[] {
+export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   const boxOf = (id: number | null): BoxShape | null => {
     if (id == null) return null;
     const s = shapes.find((sh) => sh.id === id);
@@ -205,25 +245,28 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): Point[] {
   };
   const b1 = boxOf(a.box1), b2 = boxOf(a.box2);
 
-  // Arrows sharing the same attached pair get spread along the border
-  // (and distinct mid-lines) instead of overlapping.
-  let off = 0;
+  // Arrows sharing the same attached pair get spread across border
+  // slots (and distinct mid-lines) instead of overlapping.
+  let slot = 0, off = 0;
   if (b1 && b2) {
     const siblings = shapes.filter((s): s is ArrowShape =>
       s.type === 'arrow' &&
       ((s.box1 === a.box1 && s.box2 === a.box2) || (s.box1 === a.box2 && s.box2 === a.box1)));
     if (siblings.length > 1) {
-      const i = siblings.findIndex((s) => s.id === a.id);
-      off = (i - (siblings.length - 1) / 2) * 2;
+      slot = siblings.findIndex((s) => s.id === a.id);
+      // Center-out: slot 0 stays on the natural line, later slots
+      // alternate outward (-2, +2, -4, +4 …) matching overflow wrap.
+      off = (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2;
     }
   }
 
   let p1: Point = { x: a.x1, y: a.y1 }, p2: Point = { x: a.x2, y: a.y2 };
   let ax1: 'h' | 'v' | null = null, ax2: 'h' | 'v' | null = null;
+  let side1: Side | null = null, side2: Side | null = null;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
-  if (b1) { const an = anchor(b1, o1, off); p1 = { x: an.x, y: an.y }; ax1 = an.axis; a.x1 = an.x; a.y1 = an.y; }
-  if (b2) { const an = anchor(b2, o2, off); p2 = { x: an.x, y: an.y }; ax2 = an.axis; a.x2 = an.x; a.y2 = an.y; }
+  if (b1) { const an = anchorFor(b1, o1, slot, off); p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y; }
+  if (b2) { const an = anchorFor(b2, o2, slot, off); p2 = { x: an.x, y: an.y }; ax2 = an.axis; side2 = an.side; a.x2 = an.x; a.y2 = an.y; }
 
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   if (!ax1 && !ax2) {
@@ -239,21 +282,50 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): Point[] {
 
   let pts: Point[];
   if (ax1 === 'h' && ax2 === 'h') {
-    if (dy === 0) pts = [p1, p2];
+    if (dy === 0 && !(side1 != null && side1 === side2)) pts = [p1, p2];
     else {
-      const mx = ((p1.x + p2.x) >> 1) + off;
+      // Same-side pairs (left/left, right/right) loop around outside.
+      const mx = side1 === 'left' && side2 === 'left'
+        ? Math.min(p1.x, p2.x) - 1 - (Math.abs(off) >> 1)
+        : side1 === 'right' && side2 === 'right'
+          ? Math.max(p1.x, p2.x) + 1 + (Math.abs(off) >> 1)
+          : ((p1.x + p2.x) >> 1) + off;
       pts = [p1, { x: mx, y: p1.y }, { x: mx, y: p2.y }, p2];
     }
   } else if (ax1 === 'v' && ax2 === 'v') {
-    if (dx === 0) pts = [p1, p2];
+    if (dx === 0 && !(side1 != null && side1 === side2)) pts = [p1, p2];
     else {
-      const my = ((p1.y + p2.y) >> 1) + off;
+      const my = side1 === 'top' && side2 === 'top'
+        ? Math.min(p1.y, p2.y) - 1 - (Math.abs(off) >> 1)
+        : side1 === 'bottom' && side2 === 'bottom'
+          ? Math.max(p1.y, p2.y) + 1 + (Math.abs(off) >> 1)
+          : ((p1.y + p2.y) >> 1) + off;
       pts = [p1, { x: p1.x, y: my }, { x: p2.x, y: my }, p2];
     }
   } else if (ax1 === 'h') {
-    pts = [p1, { x: p2.x, y: p1.y }, p2];
+    // Horizontal exit → vertical approach. If the direct bend would cut
+    // through the target box, detour around it on the source side.
+    const K = 1 + (Math.abs(off) >> 1);
+    if (b2 && (side2 === 'top' || side2 === 'bottom') &&
+        (side2 === 'top' ? p1.y > p2.y : p1.y < p2.y)) {
+      const outY = side2 === 'top' ? p2.y - K : p2.y + K;
+      const cx = p1.x < p2.x ? b2.x - 1 - K : b2.x + b2.w + K;
+      pts = [p1, { x: cx, y: p1.y }, { x: cx, y: outY }, { x: p2.x, y: outY }, p2];
+    } else {
+      pts = [p1, { x: p2.x, y: p1.y }, p2];
+    }
   } else {
-    pts = [p1, { x: p1.x, y: p2.y }, p2];
+    // Vertical exit → horizontal approach; detour when leaving through
+    // the source box would be required.
+    const K = 1 + (Math.abs(off) >> 1);
+    if (b1 && (side1 === 'top' || side1 === 'bottom') &&
+        (side1 === 'top' ? p2.y > p1.y : p2.y < p1.y)) {
+      const outY = side1 === 'top' ? p1.y - K : p1.y + K;
+      const mx = ((p1.x + p2.x) >> 1) + off;
+      pts = [p1, { x: p1.x, y: outY }, { x: mx, y: outY }, { x: mx, y: p2.y }, p2];
+    } else {
+      pts = [p1, { x: p1.x, y: p2.y }, p2];
+    }
   }
 
   const out: Point[] = [pts[0]];
@@ -261,5 +333,9 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): Point[] {
     const last = out[out.length - 1];
     if (pts[i].x !== last.x || pts[i].y !== last.y) out.push(pts[i]);
   }
-  return out;
+  return {
+    pts: out,
+    into1: side1 ? INTO_HEAD[side1] : null,
+    into2: side2 ? INTO_HEAD[side2] : null,
+  };
 }

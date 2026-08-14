@@ -71,6 +71,26 @@ describe('parallel arrows between the same boxes', () => {
     expect(out.match(/>/g)).toHaveLength(2);
     expect(out.match(/</g)).toHaveLength(1);
   });
+
+  it('overflows to top/bottom sides when the facing side is full', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 12, 8, 'Client'),
+      box(2, 48, 2, 21, 3, 'Server'),
+      arrow(3, { box1: 1, box2: 2 }),
+      arrow(4, { box1: 1, box2: 2, text: 'http POST' }),
+      arrow(5, { box1: 1, box2: 2, text: 'HTTP patch' }),
+    ];
+    expect(exportAscii(shapes)).toBe([
+      '+----------+',
+      '|          |-------------- http POST -------------v',
+      '|          |                                    +-------------------+',
+      '|  Client  |----------------------------------->|      Server       |',
+      '|          |                                    +-------------------+',
+      '|          |------------- HTTP patch -------------^',
+      '|          |',
+      '+----------+',
+    ].join('\n'));
+  });
 });
 
 describe('unicode style', () => {
