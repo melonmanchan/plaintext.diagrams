@@ -1,7 +1,7 @@
 import { CH, CW, FONT, MAX_COLS, MAX_ROWS } from './constants';
 import { pathMidpoint, resolveArrow } from './raster';
 import { ctx, render } from './render';
-import { boxMinSize, fitBoxToLabel, groupMinSize } from './shapes';
+import { boxMinSize, fitBoxToLabel, groupMinSize, groupTopRow, laneBounds } from './shapes';
 import { app, getShape, pushUndo, save, snapshot } from './store';
 import type { BoxShape, Shape } from './types';
 import { clamp } from './util';
@@ -12,14 +12,16 @@ import { clamp } from './util';
 
 let editorEl: HTMLTextAreaElement | null = null;
 let editSnap: string | null = null;
+let editLane: number | null = null;
 
-export function startEdit(s: Shape, seed?: string): void {
+export function startEdit(s: Shape, seed?: string, lane?: number): void {
   commitEdit();
   app.editing = s.id;
+  editLane = s.type === 'group' && lane != null ? lane : null;
   editSnap = snapshot();
   const ta = document.createElement('textarea');
   ta.className = 'editor';
-  ta.value = seed ?? s.text ?? '';
+  ta.value = seed ?? (editLane != null && s.type === 'group' ? s.lanes?.[editLane] ?? '' : s.text ?? '');
   ta.style.font = FONT;
   ta.style.lineHeight = CH + 'px';
   ctx.font = FONT;
@@ -54,7 +56,12 @@ export function startEdit(s: Shape, seed?: string): void {
     const at = s.type === 'arrow'
       ? pathMidpoint(resolveArrow(s, app.doc.shapes).pts)
       : s.type === 'group'
-        ? { x: s.x + 2, y: s.y + 1 } // title slot in the frame's top-left
+        ? editLane != null
+          ? { // lane header slot
+              x: [s.x, ...laneBounds(s)][editLane] + 2,
+              y: groupTopRow(s) + 1,
+            }
+          : { x: s.x + 2, y: s.y + 1 } // title slot in the frame's top-left
         : { x: s.x, y: s.y };
     const ox = at.x, oy = at.y;
     ta.style.left = ox * CW + 'px';
@@ -134,8 +141,14 @@ export function commitEdit(): void {
   if (app.editing == null || !editorEl) return;
   const s = getShape(app.editing);
   const value = editorEl.value.replace(/[ \t]+$/gm, '').replace(/\n+$/, '');
+  const lane = editLane;
   teardownEditor();
-  if (s) {
+  if (s && s.type === 'group' && lane != null && s.lanes) {
+    if ((s.lanes[lane] ?? '') !== value) {
+      pushUndo(editSnap ?? undefined);
+      s.lanes[lane] = value;
+    }
+  } else if (s) {
     const changed = (s.text ?? '') !== value;
     if (s.type === 'text' && !value) {
       pushUndo(editSnap ?? undefined);
@@ -182,6 +195,7 @@ export function cancelEdit(): void {
 
 function teardownEditor(): void {
   app.editing = null;
+  editLane = null;
   if (editorEl) {
     const el = editorEl;
     editorEl = null;

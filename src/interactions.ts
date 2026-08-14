@@ -2,7 +2,7 @@ import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
 import { cycleArrowHeads } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { render } from './render';
-import { boxAt, boxAttachAt, boxHandles, boxMinSize, groupMinSize, insideGroup, onBoxBorder, placeFrom, snapBox } from './shapes';
+import { boxAt, boxAttachAt, boxHandles, boxMinSize, groupMinSize, groupTopRow, insideGroup, laneBounds, onBoxBorder, placeFrom, snapBox } from './shapes';
 import { app, getShape, pushUndo, save, snapshot, soleSel, uid } from './store';
 import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, TextShape } from './types';
 import { hintText, setTool } from './ui';
@@ -314,6 +314,14 @@ function onDblClick(e: MouseEvent): void {
   if (s) {
     app.selection = new Set([s.id]);
     render();
+    // Double-click on a swimlane's header band edits that lane's title.
+    if (s.type === 'group' && s.lanes && s.lanes.length >= 2 && cy === groupTopRow(s) + 1) {
+      const bounds = laneBounds(s);
+      let lane = 0;
+      while (lane < bounds.length && cx > bounds[lane]) lane++;
+      startEdit(s, undefined, lane);
+      return;
+    }
     startEdit(s);
   } else {
     const snap = snapshot();

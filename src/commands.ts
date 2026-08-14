@@ -22,7 +22,10 @@ export function cycleArrowHeads(): boolean {
   return true;
 }
 
-/** Toggle the kind-appropriate style variant on every selected shape. */
+/**
+ * Toggle the kind-appropriate variant on every selected shape:
+ * arrows dash, boxes round, groups cycle swimlanes (none→2→…→5→none).
+ */
 export function cycleStyle(): boolean {
   const targets = [...app.selection]
     .map(getShape)
@@ -30,8 +33,15 @@ export function cycleStyle(): boolean {
   if (!targets.length) return false;
   pushUndo();
   for (const s of targets) {
-    if (s.type === 'arrow' || s.type === 'group') s.style = s.style === 'dashed' ? undefined : 'dashed';
+    if (s.type === 'arrow') s.style = s.style === 'dashed' ? undefined : 'dashed';
     else if (s.type === 'box') s.style = s.style === 'round' ? undefined : 'round';
+    else if (s.type === 'group') {
+      const n = s.lanes?.length ?? 0;
+      const next = n === 0 ? 2 : n >= 5 ? 0 : n + 1;
+      s.lanes = next === 0
+        ? undefined
+        : Array.from({ length: next }, (_, i) => s.lanes?.[i] ?? 'Lane ' + (i + 1));
+    }
   }
   save();
   render();

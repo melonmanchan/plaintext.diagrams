@@ -55,40 +55,30 @@ export function parseAscii(text: string): Shape[] {
 
   /**
    * Walk two side columns down to the corner row and verify/consume the
-   * rectangle. `corner` is the expected bottom-corner char; `allowGaps`
-   * tolerates single missing border cells (dashed frames).
+   * rectangle. `corner` is the expected bottom-corner char. A row whose
+   * interior junctions continue downward is a swimlane header underline,
+   * not the bottom — skip it.
    */
   function rectBottom(
     x1: number, x2: number, y1: number,
-    horiz: (c: string) => boolean, corner: string, allowGaps: boolean,
-  ): { y2: number; gapped: boolean } | null {
+    horiz: (c: string) => boolean, corner: string,
+  ): number | null {
     if (x2 - x1 < 2) return null;
     const edgeOk = (c: string) => horiz(c) || c === '|';
-    let gapped = false;
-    let blankL = false, blankR = false;
     for (let y2 = y1 + 1; y2 <= H; y2++) {
       const cl = at(x1, y2), cr = at(x2, y2);
-      if (cl === corner && cr === corner && y2 - y1 >= 2) {
-        let ok = true, blanks = 0, present = 0;
-        for (let i = x1 + 1; i < x2 && ok; i++) {
-          const c = at(i, y2);
-          if (edgeOk(c)) { blanks = 0; present++; continue; }
-          if (allowGaps && c === ' ' && blanks === 0) { blanks = 1; gapped = true; continue; }
-          ok = false;
-        }
-        if (ok && present > 0) {
-          for (let i = x1; i <= x2; i++) { takeEdge(i, y1); takeEdge(i, y2); }
-          for (let j = y1; j <= y2; j++) { takeSide(x1, j); takeSide(x2, j); }
-          return { y2, gapped };
-        }
+      if (!(sideOk(cl) || cl === corner) || !(sideOk(cr) || cr === corner)) return null;
+      if (cl !== corner || cr !== corner || y2 - y1 < 2) continue;
+      let ok = true, underline = false;
+      for (let i = x1 + 1; i < x2 && ok; i++) {
+        const c = at(i, y2);
+        if (!edgeOk(c)) ok = false;
+        else if (c === '+' && at(i, y2 + 1) === '|') underline = true;
       }
-      const contL = sideOk(cl) || cl === corner
-        ? (blankL = false, true)
-        : allowGaps && cl === ' ' && !blankL ? (blankL = true, gapped = true, true) : false;
-      const contR = sideOk(cr) || cr === corner
-        ? (blankR = false, true)
-        : allowGaps && cr === ' ' && !blankR ? (blankR = true, gapped = true, true) : false;
-      if (!contL || !contR) return null;
+      if (!ok || underline) continue;
+      for (let i = x1; i <= x2; i++) { takeEdge(i, y1); takeEdge(i, y2); }
+      for (let j = y1; j <= y2; j++) { takeSide(x1, j); takeSide(x2, j); }
+      return y2;
     }
     return null;
   }
@@ -100,33 +90,24 @@ export function parseAscii(text: string): Shape[] {
   //   +=======+
   //   | Title |
   //   +=======+==============+   ← frame top continues right of the tab
-  // Dashed variants drop every other border cell.
   function groupAt(x: number, y: number): GroupShape | null {
-    let topBlank = 0;
-    for (let x2 = x + 1; x2 <= (lines[y]?.length ?? 0) + 1; x2++) {
-      const c = at(x2, y);
-      if (isHG(c) || c === '|') topBlank = 0;
-      else if (c === ' ' && topBlank === 0) { topBlank = 1; continue; }
-      else break;
-      if (c !== '+' || !lines[y].slice(x + 1, x2).includes('=')) continue;
+    const hgTop = topOk(isHG);
+    for (let x2 = x + 1; hgTop(at(x2, y)); x2++) {
+      // a real corner terminates the border; '+' with '=' continuing past
+      // it is a lane-separator junction
+      if (at(x2, y) !== '+' || isHG(at(x2 + 1, y))) continue;
+      if (!lines[y].slice(x + 1, x2).includes('=')) continue;
 
       const tabRow = y + 2;
-      const tabSideOk = (cc: string) => sideOk(cc) || cc === ' ';
       const isTab =
         at(x, tabRow) === '+' && at(x2, tabRow) === '+' &&
-        tabSideOk(at(x, y + 1)) && tabSideOk(at(x2, y + 1)) &&
-        (at(x2 + 1, tabRow) === '=' ||
-          (at(x2 + 1, tabRow) === ' ' && at(x2 + 2, tabRow) === '='));
+        sideOk(at(x, y + 1)) && sideOk(at(x2, y + 1)) &&
+        at(x2 + 1, tabRow) === '=';
       if (isTab) {
-        let blanks = 0;
-        for (let xr = x2 + 1; xr <= (lines[tabRow]?.length ?? 0) + 1; xr++) {
-          const cc = at(xr, tabRow);
-          if (isHG(cc) || cc === '|') blanks = 0;
-          else if (cc === ' ' && blanks === 0) { blanks = 1; continue; }
-          else break;
-          if (cc !== '+') continue;
-          const hit = rectBottom(x, xr, tabRow, isHG, '+', true);
-          if (!hit) continue;
+        for (let xr = x2 + 1; hgTop(at(xr, tabRow)); xr++) {
+          if (at(xr, tabRow) !== '+' || isHG(at(xr + 1, tabRow))) continue;
+          const yBot = rectBottom(x, xr, tabRow, isHG, '+');
+          if (yBot == null) continue;
           for (let i = x; i <= x2; i++) takeEdge(i, y);
           takeSide(x, y + 1);
           takeSide(x2, y + 1);
@@ -135,27 +116,67 @@ export function parseAscii(text: string): Shape[] {
             title += free(i, y + 1) ? at(i, y + 1) : ' ';
             take(i, y + 1);
           }
-          const g: GroupShape = { type: 'group', id: seq++, x, y, w: xr - x + 1, h: hit.y2 - y + 1, text: title.trim() };
-          if (hit.gapped) g.style = 'dashed';
-          return g;
+          return { type: 'group', id: seq++, x, y, w: xr - x + 1, h: yBot - y + 1, text: title.trim() };
         }
         return null;
       }
-      const hit = rectBottom(x, x2, y, isHG, '+', true);
-      if (hit) {
-        const g: GroupShape = { type: 'group', id: seq++, x, y, w: x2 - x + 1, h: hit.y2 - y + 1, text: '' };
-        if (hit.gapped) g.style = 'dashed';
-        return g;
+      const yBot = rectBottom(x, x2, y, isHG, '+');
+      if (yBot != null) {
+        return { type: 'group', id: seq++, x, y, w: x2 - x + 1, h: yBot - y + 1, text: '' };
       }
     }
     return null;
+  }
+
+  /* ---------- swimlanes: header band + separators inside a group ---------- */
+
+  function detectLanes(g: GroupShape): void {
+    const top = g.text && g.h >= 5 ? g.y + 2 : g.y;
+    const u = top + 2;
+    if (g.y + g.h - 1 - top < 4) return;
+    if (at(g.x, u) !== '+' || at(g.x + g.w - 1, u) !== '+') return;
+    let isU = true;
+    const bounds: number[] = [];
+    for (let i = g.x + 1; i < g.x + g.w - 1 && isU; i++) {
+      const c = at(i, u);
+      if (c === '+' && at(i, u + 1) === '|') bounds.push(i);
+      else if (!isHG(c) && c !== '|') isU = false;
+    }
+    if (!isU || !bounds.length) return;
+    if (!bounds.every((bx) => at(bx, top) === '+' && at(bx, g.y + g.h - 1) === '+')) return;
+
+    // consume the underline and the separator columns (skip crossings)
+    for (let i = g.x + 1; i < g.x + g.w - 1; i++) {
+      const c = at(i, u);
+      if (c === '=' || c === '+') take(i, u);
+    }
+    for (const bx of bounds) {
+      for (let j = top + 1; j < g.y + g.h - 1; j++) {
+        if (at(bx, j) === '|') take(bx, j);
+      }
+    }
+    // lane titles from the header band
+    const edges = [g.x, ...bounds, g.x + g.w - 1];
+    const lanes: string[] = [];
+    for (let li = 0; li + 1 < edges.length; li++) {
+      let t = '';
+      for (let i = edges[li] + 1; i < edges[li + 1]; i++) {
+        t += free(i, top + 1) ? at(i, top + 1) : ' ';
+        if (free(i, top + 1) && at(i, top + 1) !== ' ') take(i, top + 1);
+      }
+      lanes.push(t.trim());
+    }
+    g.lanes = lanes;
   }
 
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < lines[y].length; x++) {
       if (at(x, y) !== '+' || !free(x, y)) continue;
       const g = groupAt(x, y);
-      if (g) groups.push(g);
+      if (g) {
+        detectLanes(g);
+        groups.push(g);
+      }
     }
   }
 
@@ -168,9 +189,9 @@ export function parseAscii(text: string): Shape[] {
       const hTop = topOk(isH);
       for (let x2 = x + 1; hTop(at(x2, y)) || at(x2, y) === tr; x2++) {
         if (at(x2, y) !== tr) continue;
-        const hit = rectBottom(x, x2, y, isH, round ? "'" : '+', false);
-        if (hit != null) {
-          const b: BoxShape = { type: 'box', id: seq++, x, y, w: x2 - x + 1, h: hit.y2 - y + 1, text: '' };
+        const yBot = rectBottom(x, x2, y, isH, round ? "'" : '+');
+        if (yBot != null) {
+          const b: BoxShape = { type: 'box', id: seq++, x, y, w: x2 - x + 1, h: yBot - y + 1, text: '' };
           if (round) b.style = 'round';
           boxes.push(b);
           break;
@@ -256,7 +277,7 @@ export function parseAscii(text: string): Shape[] {
       for (let i = 0; i < maxGap; i++) {
         const gx = cx + dir[0] * i, gy = cy + dir[1] * i;
         const gc = at(gx, gy);
-        if (i > 0 && gc === lineOf(dir) && free(gx, gy)) { resume = i; break; }
+        if (i > 0 && (gc === lineOf(dir) || gc === '+') && free(gx, gy)) { resume = i; break; }
         if (gc === '-' || gc === '|' || gc === '+' || gc in HEAD_DIR) { blocked = true; break; }
         gap.push([gx, gy]);
       }
@@ -303,7 +324,7 @@ export function parseAscii(text: string): Shape[] {
     const a: ArrowShape = { type: 'arrow', id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
     if (label) a.text = label;
     if (dual) a.heads = 'both';
-    if (singleGaps >= 2 && singleGaps * 2 >= cells.length - 2) a.style = 'dashed';
+    if (singleGaps >= 2 && singleGaps * 4 >= cells.length) a.style = 'dashed';
     return a;
   }
 

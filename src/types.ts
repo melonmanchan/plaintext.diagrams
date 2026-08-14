@@ -20,8 +20,8 @@ export interface GroupShape {
   h: number;
   /** Title shown in the top-left corner of the frame. */
   text: string;
-  /** Frame style; absent means solid double-line. */
-  style?: 'dashed';
+  /** Vertical swimlane titles; 2+ entries render lane separators. */
+  lanes?: string[];
 }
 
 export interface TextShape {

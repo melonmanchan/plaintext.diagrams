@@ -21,7 +21,7 @@ const HINTS: Record<Tool, string> = {
   box: 'drag to draw a box, then just type to label it · cmd+D: rounded corners',
   arrow: 'drag from source to target — snaps to boxes · type to label · right-click / cmd+B: heads · cmd+D: dashed',
   text: 'click anywhere to place free-standing text',
-  group: 'drag to draw a group frame — moving it carries everything inside · type to title it · cmd+D: dashed',
+  group: 'drag to draw a group frame — moving it carries contents · type to title · cmd+D: cycle swimlanes',
 };
 
 export function hintText(cx: number, cy: number): string {

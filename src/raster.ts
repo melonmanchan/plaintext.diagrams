@@ -1,6 +1,7 @@
 import { COLS, PRI, ROWS } from './constants';
 import type { ArrowShape, BoxShape, GroupShape, Point, Put, Raster, Shape, TextShape } from './types';
 import { clamp } from './util';
+import { laneBounds } from './shapes';
 
 /* ============================================================
  * Rasterizer — shapes → character grid.
@@ -27,11 +28,21 @@ export function rasterize(shapes: Shape[], cols = COLS, rows = ROWS): Raster {
     if (p >= pri[i]) { ch[i] = c; id[i] = sid; pri[i] = p; }
   };
 
+  /** Hit-test-only marker for cells a dashed line skips visually. */
+  const ghost = (x: number, y: number, sid: number) => {
+    if (x < 0 || y < 0 || x >= cols || y >= rows) return;
+    const i = y * cols + x;
+    if (id[i] === 0) id[i] = sid;
+  };
+  /** Is the cell already occupied by lower layers (border, line …)? */
+  const busy = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < cols && y < rows && pri[y * cols + x] > 0;
+
   // Groups first so their frames sit beneath everything else.
   for (const s of shapes) if (s.type === 'group') drawGroup(s, put);
   for (const s of shapes) {
     if (s.type === 'box') drawBox(s, put);
-    else if (s.type === 'arrow') drawArrow(s, shapes, put);
+    else if (s.type === 'arrow') drawArrow(s, shapes, put, ghost, busy);
     else if (s.type === 'text') drawText(s, put);
   }
   return { ch, id, pri, cols, rows };
@@ -42,43 +53,60 @@ function drawGroup(s: GroupShape, put: Put): void {
   const title = (s.text ?? '').split('\n')[0];
   const tabbed = !!title && h >= 5;
   const top = tabbed ? y + 2 : y; // main frame's top border row
-  const dashed = s.style === 'dashed';
-  // Dashed frames drop every other border cell (corners always drawn).
-  const putB = (bx: number, by: number, c: string, force = false) => {
-    if (!dashed || force || (bx + by) % 2 === 0) put(bx, by, c, id, PRI.groupborder);
-  };
 
   if (tabbed) {
     const tw = Math.min(w, title.length + 4);
-    for (let i = 0; i < tw; i++) putB(x + i, y, '=');
-    putB(x, y, '+', true);
-    putB(x + tw - 1, y, '+', true);
-    putB(x, y + 1, '|');
-    putB(x + tw - 1, y + 1, '|');
+    for (let i = 0; i < tw; i++) put(x + i, y, '=', id, PRI.groupborder);
+    put(x, y, '+', id, PRI.groupborder);
+    put(x + tw - 1, y, '+', id, PRI.groupborder);
+    put(x, y + 1, '|', id, PRI.groupborder);
+    put(x + tw - 1, y + 1, '|', id, PRI.groupborder);
     const t = title.slice(0, Math.max(0, tw - 4));
     for (let k = 0; k < t.length; k++) put(x + 2 + k, y + 1, t[k], id, PRI.text);
   }
 
   for (let i = 0; i < w; i++) {
-    putB(x + i, top, '=');
-    putB(x + i, y + h - 1, '=');
+    put(x + i, top, '=', id, PRI.groupborder);
+    put(x + i, y + h - 1, '=', id, PRI.groupborder);
   }
   for (let j = top; j < y + h; j++) {
-    putB(x, j, '|');
-    putB(x + w - 1, j, '|');
+    put(x, j, '|', id, PRI.groupborder);
+    put(x + w - 1, j, '|', id, PRI.groupborder);
   }
-  putB(x, top, '+', true);
-  putB(x + w - 1, top, '+', true);
-  putB(x, y + h - 1, '+', true);
-  putB(x + w - 1, y + h - 1, '+', true);
+  put(x, top, '+', id, PRI.groupborder);
+  put(x + w - 1, top, '+', id, PRI.groupborder);
+  put(x, y + h - 1, '+', id, PRI.groupborder);
+  put(x + w - 1, y + h - 1, '+', id, PRI.groupborder);
   if (tabbed) {
     // junction where the tab's right side meets the frame's top border
-    putB(x + Math.min(w, title.length + 4) - 1, top, '+', true);
+    put(x + Math.min(w, title.length + 4) - 1, top, '+', id, PRI.groupborder);
   }
   if (!tabbed && s.text && h > 2) {
     // frame too short for a tab: fall back to inline title
     const t = title.slice(0, Math.max(0, w - 4));
     for (let k = 0; k < t.length; k++) put(x + 2 + k, y + 1, t[k], id, PRI.text);
+  }
+
+  // Vertical swimlanes: header band + underline + full-height separators.
+  const n = s.lanes?.length ?? 0;
+  if (n >= 2 && y + h - 1 - top >= 4) {
+    const bounds = laneBounds(s);
+    const u = top + 2; // header underline row
+    for (let i = 1; i < w - 1; i++) put(x + i, u, '=', id, PRI.groupborder);
+    put(x, u, '+', id, PRI.groupborder);
+    put(x + w - 1, u, '+', id, PRI.groupborder);
+    for (const bx of bounds) {
+      for (let j = top + 1; j < y + h - 1; j++) put(bx, j, '|', id, PRI.groupborder);
+      put(bx, top, '+', id, PRI.groupborder);
+      put(bx, u, '+', id, PRI.groupborder);
+      put(bx, y + h - 1, '+', id, PRI.groupborder);
+    }
+    const edges = [x, ...bounds, x + w - 1];
+    for (let li = 0; li < n; li++) {
+      const lo = edges[li] + 2, hi = edges[li + 1] - 1;
+      const t = (s.lanes![li] ?? '').slice(0, Math.max(0, hi - lo));
+      for (let k = 0; k < t.length; k++) put(lo + k, top + 1, t[k], id, PRI.text);
+    }
   }
 }
 
@@ -122,26 +150,33 @@ function drawText(s: TextShape, put: Put): void {
 /** Head glyph pointing INTO a box anchored on the given side. */
 const INTO_HEAD: Record<Side, string> = { left: '>', right: '<', top: 'v', bottom: '^' };
 
-function drawArrow(s: ArrowShape, shapes: Shape[], put: Put): void {
+function drawArrow(
+  s: ArrowShape, shapes: Shape[], put: Put,
+  ghost: (x: number, y: number, sid: number) => void,
+  busy: (x: number, y: number) => boolean,
+): void {
   const { pts, into1, into2 } = resolveArrow(s, shapes);
   if (pts.length < 2) {
     put(pts[0].x, pts[0].y, '>', s.id, PRI.head);
     return;
   }
-  // Dashed arrows drop every other cell; segment endpoints are always
-  // drawn so bends and head/tail stay connected.
+  // Dashed arrows drop every other cell visually; skipped cells still get
+  // a hit-test ghost id so the arrow stays clickable along its whole run.
+  // Cells over existing content (borders, lines) are always drawn so
+  // crossings stay continuous and parseable; so are cells near bends.
   const dashed = s.style === 'dashed';
   const putL = (x: number, y: number, c: string, force: boolean) => {
-    if (!dashed || force || (x + y) % 2 === 0) put(x, y, c, s.id, PRI.line);
+    if (!dashed || force || (x + y) % 2 === 0 || busy(x, y)) put(x, y, c, s.id, PRI.line);
+    else ghost(x, y, s.id);
   };
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1];
     if (a.y === b.y) {
       const lo = Math.min(a.x, b.x), hi = Math.max(a.x, b.x);
-      for (let x = lo; x <= hi; x++) putL(x, a.y, '-', x === lo || x === hi);
+      for (let x = lo; x <= hi; x++) putL(x, a.y, '-', x <= lo + 1 || x >= hi - 1);
     } else {
       const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
-      for (let y = lo; y <= hi; y++) putL(a.x, y, '|', y === lo || y === hi);
+      for (let y = lo; y <= hi; y++) putL(a.x, y, '|', y <= lo + 1 || y >= hi - 1);
     }
   }
   for (let i = 1; i < pts.length - 1; i++)

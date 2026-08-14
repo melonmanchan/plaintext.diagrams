@@ -90,10 +90,25 @@ export function fitBoxToLabel(s: BoxShape | GroupShape): void {
   if (s.h < minH) s.h = Math.min(minH, MAX_ROWS - s.y);
 }
 
-/** Minimum group size: titled frames need the 2-row tab. */
+/** Minimum group size: titled frames need the 2-row tab; lanes need a header band. */
 export function groupMinSize(s: GroupShape): [number, number] {
+  const tab = s.text ? 2 : 0;
+  const n = s.lanes?.length ?? 0;
+  if (n >= 2) return [Math.max(4, n * 6), tab + 5];
   if (!s.text) return [4, 3];
   return [Math.max(4, s.text.split('\n')[0].length + 4), 5];
+}
+
+/** Row of the group's main frame top border (below the tab when titled). */
+export function groupTopRow(g: GroupShape): number {
+  return g.text && g.h >= 5 ? g.y + 2 : g.y;
+}
+
+/** X positions of the separators between vertical lanes. */
+export function laneBounds(g: GroupShape): number[] {
+  const n = g.lanes?.length ?? 0;
+  if (n < 2) return [];
+  return Array.from({ length: n - 1 }, (_, i) => g.x + Math.round(((i + 1) * (g.w - 1)) / n));
 }
 
 /**
