@@ -2,9 +2,9 @@ import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
 import { cycleArrowHeads } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { render } from './render';
-import { boxAt, boxAttachAt, boxHandles, boxMinSize, onBoxBorder, placeFrom, snapBox } from './shapes';
+import { boxAt, boxAttachAt, boxHandles, boxMinSize, groupMinSize, insideGroup, onBoxBorder, placeFrom, snapBox } from './shapes';
 import { app, getShape, pushUndo, save, snapshot, soleSel, uid } from './store';
-import type { ArrowShape, BoxShape, Corner, Shape, TextShape } from './types';
+import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, TextShape } from './types';
 import { hintText, setTool } from './ui';
 import { clamp, clone } from './util';
 
@@ -32,7 +32,7 @@ function shapeIdAt(cx: number, cy: number): number | null {
   return app.grid.id[cy * app.grid.cols + cx] || null;
 }
 
-function handleAt(px: number, py: number, s: BoxShape): Corner | null {
+function handleAt(px: number, py: number, s: BoxShape | GroupShape): Corner | null {
   for (const h of boxHandles(s))
     if (Math.abs(px - h.px) <= 7 && Math.abs(py - h.py) <= 7) return h.c;
   return null;
@@ -94,20 +94,20 @@ function onMouseDown(e: MouseEvent): void {
 
   if (app.tool === 'select') {
     const sel = soleSel();
-    if (sel && sel.type === 'box') {
+    if (sel && (sel.type === 'box' || sel.type === 'group')) {
       const corner = handleAt(px, py, sel);
       if (corner) {
         app.drag = { mode: 'resize', id: sel.id, corner, orig: clone(sel), snap: snapshot(), moved: false };
         return;
       }
-      // Drag from a selected box's border starts a new arrow attached to it.
-      if (!e.shiftKey && onBoxBorder(sel, cx, cy)) {
-        const id = uid();
-        app.doc.shapes.push({ type: 'arrow', id, x1: cx, y1: cy, x2: cx, y2: cy, box1: sel.id, box2: null });
-        app.drag = { mode: 'create-arrow', id, snap: snapshot(), moved: false };
-        render();
-        return;
-      }
+    }
+    // Drag from a selected box's border starts a new arrow attached to it.
+    if (sel && sel.type === 'box' && !e.shiftKey && onBoxBorder(sel, cx, cy)) {
+      const id = uid();
+      app.doc.shapes.push({ type: 'arrow', id, x1: cx, y1: cy, x2: cx, y2: cy, box1: sel.id, box2: null });
+      app.drag = { mode: 'create-arrow', id, snap: snapshot(), moved: false };
+      render();
+      return;
     }
     if (sel && sel.type === 'arrow') {
       const which = endpointAt(px, py, sel);
@@ -128,6 +128,14 @@ function onMouseDown(e: MouseEvent): void {
           const s = getShape(id);
           if (s) orig.set(id, clone(s));
         }
+        // Group frames carry everything geometrically inside them.
+        for (const id of [...orig.keys()]) {
+          const g = getShape(id);
+          if (!g || g.type !== 'group') continue;
+          for (const s of app.doc.shapes) {
+            if (!orig.has(s.id) && insideGroup(s, g)) orig.set(s.id, clone(s));
+          }
+        }
         app.drag = { mode: 'move', sx: cx, sy: cy, orig, snap: snapshot(), moved: false };
       }
     } else {
@@ -136,8 +144,8 @@ function onMouseDown(e: MouseEvent): void {
       app.drag = { mode: 'marquee', sx: cx, sy: cy, cx, cy, base, moved: false };
     }
     render();
-  } else if (app.tool === 'box') {
-    app.drag = { mode: 'create-box', sx: cx, sy: cy, id: null, snap: snapshot(), moved: false };
+  } else if (app.tool === 'box' || app.tool === 'group') {
+    app.drag = { mode: 'create-box', kind: app.tool, sx: cx, sy: cy, id: null, snap: snapshot(), moved: false };
   } else if (app.tool === 'arrow') {
     const id = uid();
     const b = boxAttachAt(app.doc.shapes, cx, cy);
@@ -204,9 +212,9 @@ function onMouseMove(e: MouseEvent): void {
     app.selection = next;
   } else if (d.mode === 'resize') {
     const s = getShape(d.id);
-    if (!s || s.type !== 'box') return;
+    if (!s || (s.type !== 'box' && s.type !== 'group')) return;
     const o = d.orig;
-    const [minW, minH] = boxMinSize(s);
+    const [minW, minH] = s.type === 'group' ? groupMinSize(s) : boxMinSize(s);
     let x1 = o.x, y1 = o.y, x2 = o.x + o.w - 1, y2 = o.y + o.h - 1;
     if (d.corner.includes('w')) x1 = Math.min(cx, x2 - (minW - 1));
     if (d.corner.includes('e')) x2 = Math.max(cx, x1 + (minW - 1));
@@ -232,11 +240,14 @@ function onMouseMove(e: MouseEvent): void {
   } else if (d.mode === 'create-box') {
     let s = d.id != null ? getShape(d.id) : null;
     if (!s) {
-      s = { type: 'box', id: uid(), x: d.sx, y: d.sy, w: 3, h: 3, text: '' };
-      app.doc.shapes.push(s);
-      d.id = s.id;
+      const fresh: BoxShape | GroupShape = d.kind === 'box'
+        ? { type: 'box', id: uid(), x: d.sx, y: d.sy, w: 3, h: 3, text: '' }
+        : { type: 'group', id: uid(), x: d.sx, y: d.sy, w: 3, h: 3, text: '' };
+      app.doc.shapes.push(fresh);
+      d.id = fresh.id;
+      s = fresh;
     }
-    if (s.type !== 'box') return;
+    if (s.type !== 'box' && s.type !== 'group') return;
     s.x = Math.min(d.sx, cx);
     s.y = Math.min(d.sy, cy);
     s.w = Math.max(3, Math.abs(cx - d.sx) + 1);
@@ -317,15 +328,15 @@ function onDblClick(e: MouseEvent): void {
 
 function updateCursor(px: number, py: number, cx: number, cy: number): void {
   let cur = 'default';
-  if (app.tool === 'box' || app.tool === 'arrow') cur = 'crosshair';
+  if (app.tool === 'box' || app.tool === 'arrow' || app.tool === 'group') cur = 'crosshair';
   else if (app.tool === 'text') cur = 'text';
   else {
     const sel = soleSel();
-    if (sel && sel.type === 'box') {
+    if (sel && (sel.type === 'box' || sel.type === 'group')) {
       const c = handleAt(px, py, sel);
       if (c === 'nw' || c === 'se') cur = 'nwse-resize';
       else if (c === 'ne' || c === 'sw') cur = 'nesw-resize';
-      else if (onBoxBorder(sel, cx, cy)) cur = 'crosshair';
+      else if (sel.type === 'box' && onBoxBorder(sel, cx, cy)) cur = 'crosshair';
     }
     if (cur === 'default' && sel && sel.type === 'arrow' && endpointAt(px, py, sel)) cur = 'grab';
     const hit = shapeIdAt(cx, cy);

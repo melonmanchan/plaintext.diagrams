@@ -1,5 +1,5 @@
 import { COLS, PRI, ROWS } from './constants';
-import type { ArrowShape, BoxShape, Point, Put, Raster, Shape, TextShape } from './types';
+import type { ArrowShape, BoxShape, GroupShape, Point, Put, Raster, Shape, TextShape } from './types';
 import { clamp } from './util';
 
 /* ============================================================
@@ -27,12 +27,54 @@ export function rasterize(shapes: Shape[], cols = COLS, rows = ROWS): Raster {
     if (p >= pri[i]) { ch[i] = c; id[i] = sid; pri[i] = p; }
   };
 
+  // Groups first so their frames sit beneath everything else.
+  for (const s of shapes) if (s.type === 'group') drawGroup(s, put);
   for (const s of shapes) {
     if (s.type === 'box') drawBox(s, put);
     else if (s.type === 'arrow') drawArrow(s, shapes, put);
-    else drawText(s, put);
+    else if (s.type === 'text') drawText(s, put);
   }
   return { ch, id, pri, cols, rows };
+}
+
+function drawGroup(s: GroupShape, put: Put): void {
+  const { x, y, w, h, id } = s;
+  const title = (s.text ?? '').split('\n')[0];
+  const tabbed = !!title && h >= 5;
+  const top = tabbed ? y + 2 : y; // main frame's top border row
+
+  if (tabbed) {
+    const tw = Math.min(w, title.length + 4);
+    for (let i = 0; i < tw; i++) put(x + i, y, '=', id, PRI.groupborder);
+    put(x, y, '+', id, PRI.groupborder);
+    put(x + tw - 1, y, '+', id, PRI.groupborder);
+    put(x, y + 1, '|', id, PRI.groupborder);
+    put(x + tw - 1, y + 1, '|', id, PRI.groupborder);
+    const t = title.slice(0, Math.max(0, tw - 4));
+    for (let k = 0; k < t.length; k++) put(x + 2 + k, y + 1, t[k], id, PRI.text);
+  }
+
+  for (let i = 0; i < w; i++) {
+    put(x + i, top, '=', id, PRI.groupborder);
+    put(x + i, y + h - 1, '=', id, PRI.groupborder);
+  }
+  for (let j = top; j < y + h; j++) {
+    put(x, j, '|', id, PRI.groupborder);
+    put(x + w - 1, j, '|', id, PRI.groupborder);
+  }
+  put(x, top, '+', id, PRI.groupborder);
+  put(x + w - 1, top, '+', id, PRI.groupborder);
+  put(x, y + h - 1, '+', id, PRI.groupborder);
+  put(x + w - 1, y + h - 1, '+', id, PRI.groupborder);
+  if (tabbed) {
+    // junction where the tab's right side meets the frame's top border
+    put(x + Math.min(w, title.length + 4) - 1, top, '+', id, PRI.groupborder);
+  }
+  if (!tabbed && s.text && h > 2) {
+    // frame too short for a tab: fall back to inline title
+    const t = title.slice(0, Math.max(0, w - 4));
+    for (let k = 0; k < t.length; k++) put(x + 2 + k, y + 1, t[k], id, PRI.text);
+  }
 }
 
 function drawBox(s: BoxShape, put: Put): void {
@@ -129,6 +171,11 @@ const UNI_JUNCTION: Record<number, string> = {
   3: '─', 12: '│', 10: '┌', 9: '┐', 6: '└', 5: '┘',
   11: '┬', 7: '┴', 14: '├', 13: '┤', 15: '┼',
 };
+// Double-line variants for group frames.
+const UNI_GROUP: Record<number, string> = {
+  3: '═', 12: '║', 10: '╔', 9: '╗', 6: '╚', 5: '╝',
+  11: '╦', 7: '╩', 14: '╠', 13: '╣', 15: '╬',
+};
 
 export function stylize(r: Raster): string[] {
   const isLinePri = (p: number) => p === PRI.line || p === PRI.boxborder;
@@ -141,6 +188,13 @@ export function stylize(r: Raster): string[] {
     }
     return false;
   };
+  const connectsG = (x: number, y: number, axis: 'h' | 'v'): boolean => {
+    if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return false;
+    const i = y * r.cols + x;
+    if (r.pri[i] !== PRI.groupborder) return false;
+    const c = r.ch[i];
+    return c === '+' || c === (axis === 'h' ? '=' : '|');
+  };
   const out = new Array<string>(r.cols * r.rows);
   for (let y = 0; y < r.rows; y++)
     for (let x = 0; x < r.cols; x++) {
@@ -148,6 +202,17 @@ export function stylize(r: Raster): string[] {
       const c = r.ch[i];
       if (r.pri[i] === PRI.head) {
         out[i] = UNI_HEAD[c] ?? c;
+      } else if (r.pri[i] === PRI.groupborder) {
+        if (c === '=') out[i] = '═';
+        else if (c === '|') out[i] = '║';
+        else if (c === '+') {
+          const mask =
+            (connectsG(x - 1, y, 'h') ? 1 : 0) |
+            (connectsG(x + 1, y, 'h') ? 2 : 0) |
+            (connectsG(x, y - 1, 'v') ? 4 : 0) |
+            (connectsG(x, y + 1, 'v') ? 8 : 0);
+          out[i] = UNI_GROUP[mask] ?? '╬';
+        } else out[i] = c;
       } else if (isLinePri(r.pri[i])) {
         if (c === '-') out[i] = '─';
         else if (c === '|') out[i] = '│';

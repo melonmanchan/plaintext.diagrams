@@ -1,7 +1,7 @@
 import { CH, CW, FONT, MAX_COLS, MAX_ROWS } from './constants';
 import { pathMidpoint, resolveArrow } from './raster';
 import { ctx, render } from './render';
-import { boxMinSize, fitBoxToLabel } from './shapes';
+import { boxMinSize, fitBoxToLabel, groupMinSize } from './shapes';
 import { app, getShape, pushUndo, save, snapshot } from './store';
 import type { BoxShape, Shape } from './types';
 import { clamp } from './util';
@@ -53,7 +53,9 @@ export function startEdit(s: Shape, seed?: string): void {
   } else {
     const at = s.type === 'arrow'
       ? pathMidpoint(resolveArrow(s, app.doc.shapes).pts)
-      : { x: s.x, y: s.y };
+      : s.type === 'group'
+        ? { x: s.x + 2, y: s.y + 1 } // title slot in the frame's top-left
+        : { x: s.x, y: s.y };
     const ox = at.x, oy = at.y;
     ta.style.left = ox * CW + 'px';
     ta.style.top = oy * CH + 'px';
@@ -141,8 +143,21 @@ export function commitEdit(): void {
       app.selection.delete(s.id);
     } else if (changed) {
       pushUndo(editSnap ?? undefined);
-      s.text = value;
-      if (s.type === 'box') fitBoxToLabel(s);
+      if (s.type === 'group') {
+        // Tab appears/disappears with the title: keep the frame in place
+        // by extending/reclaiming the two tab rows above it.
+        const hadTitle = !!s.text;
+        const hasTitle = !!value;
+        s.text = value;
+        if (hasTitle && !hadTitle) { const up = Math.min(2, s.y); s.y -= up; s.h += 2; }
+        else if (!hasTitle && hadTitle) { s.y += 2; s.h = Math.max(3, s.h - 2); }
+        const [minW, minH] = groupMinSize(s);
+        if (s.w < minW) s.w = Math.min(minW, MAX_COLS - s.x);
+        if (s.h < minH) s.h = Math.min(minH, MAX_ROWS - s.y);
+      } else {
+        s.text = value;
+        if (s.type === 'box') fitBoxToLabel(s);
+      }
     }
   }
   editSnap = null;

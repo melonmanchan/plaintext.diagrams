@@ -8,6 +8,18 @@ export interface BoxShape {
   text: string;
 }
 
+/** Double-line frame that visually encapsulates other shapes. */
+export interface GroupShape {
+  type: 'group';
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Title shown in the top-left corner of the frame. */
+  text: string;
+}
+
 export interface TextShape {
   type: 'text';
   id: number;
@@ -31,7 +43,7 @@ export interface ArrowShape {
   heads?: 'end' | 'both' | 'start';
 }
 
-export type Shape = BoxShape | ArrowShape | TextShape;
+export type Shape = BoxShape | GroupShape | ArrowShape | TextShape;
 
 /** Alignment guide shown while snap-dragging, in world px. */
 export interface Guide {
@@ -49,7 +61,7 @@ export interface Project {
   name: string;
 }
 
-export type Tool = 'select' | 'box' | 'arrow' | 'text';
+export type Tool = 'select' | 'box' | 'arrow' | 'text' | 'group';
 
 export interface Point {
   x: number;
@@ -72,7 +84,7 @@ export type Put = (x: number, y: number, c: string, sid: number, p: number) => v
 export type Drag =
   | { mode: 'move'; sx: number; sy: number; orig: Map<number, Shape>; snap: string; moved: boolean }
   | { mode: 'marquee'; sx: number; sy: number; cx: number; cy: number; base: Set<number>; moved: boolean }
-  | { mode: 'resize'; id: number; corner: Corner; orig: BoxShape; snap: string; moved: boolean }
+  | { mode: 'resize'; id: number; corner: Corner; orig: BoxShape | GroupShape; snap: string; moved: boolean }
   | { mode: 'endpoint'; id: number; which: 1 | 2; snap: string; moved: boolean }
-  | { mode: 'create-box'; sx: number; sy: number; id: number | null; snap: string; moved: boolean }
+  | { mode: 'create-box'; kind: 'box' | 'group'; sx: number; sy: number; id: number | null; snap: string; moved: boolean }
   | { mode: 'create-arrow'; id: number; snap: string; moved: boolean };

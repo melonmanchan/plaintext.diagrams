@@ -10,17 +10,19 @@ export const LEGACY_KEY = 'asciidraw-v1';
 
 /** Raster layer priorities; higher wins per cell. */
 export const PRI = {
-  boxfill: 1,
-  boxborder: 2,
-  line: 3,
-  head: 4,
-  text: 5,
+  groupborder: 1,
+  boxfill: 2,
+  boxborder: 3,
+  line: 4,
+  head: 5,
+  text: 6,
 } as const;
 
 export const COLOR = {
   bg: '#0f1115',
   dot: '#1d2330',
   box: '#cdd6f4',
+  group: '#a6adc8',
   arrow: '#7dcfff',
   text: '#e0af68',
   sel: '#7aa2f7',

@@ -48,7 +48,10 @@ export function setupCanvas(): void {
 function shapeColor(s: Shape | null): string {
   if (!s) return COLOR.box;
   if (app.selection.has(s.id)) return COLOR.sel;
-  return s.type === 'arrow' ? COLOR.arrow : s.type === 'text' ? COLOR.text : COLOR.box;
+  if (s.type === 'arrow') return COLOR.arrow;
+  if (s.type === 'text') return COLOR.text;
+  if (s.type === 'group') return COLOR.group;
+  return COLOR.box;
 }
 
 export function render(): void {
@@ -59,6 +62,11 @@ export function render(): void {
 
   ctx.fillStyle = dotPattern ?? COLOR.bg;
   ctx.fillRect(0, 0, W, H);
+
+  // faint tint behind group frames (canvas only, not exported)
+  ctx.fillStyle = 'rgba(166,173,200,0.05)';
+  for (const s of app.doc.shapes)
+    if (s.type === 'group') ctx.fillRect(s.x * CW, s.y * CH, s.w * CW, s.h * CH);
 
   // selection / hover backgrounds
   if (app.selection.size || app.hoverId != null) {
@@ -142,7 +150,7 @@ function drawHandles(): void {
   if (!s || app.editing != null) return;
   ctx.fillStyle = COLOR.sel;
   ctx.strokeStyle = COLOR.bg;
-  if (s.type === 'box') {
+  if (s.type === 'box' || s.type === 'group') {
     for (const h of boxHandles(s)) {
       ctx.fillRect(h.px - 4, h.py - 4, 8, 8);
       ctx.strokeRect(h.px - 4, h.py - 4, 8, 8);

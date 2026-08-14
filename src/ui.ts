@@ -20,6 +20,7 @@ const HINTS: Record<Tool, string> = {
   box: 'drag to draw a box, then just type to label it',
   arrow: 'drag from source to target — endpoints inside a box snap to it · type to label · right-click / cmd+B: cycle heads',
   text: 'click anywhere to place free-standing text',
+  group: 'drag to draw a group frame — moving it carries everything inside · type to title it',
 };
 
 export function hintText(cx: number, cy: number): string {
@@ -202,7 +203,7 @@ function onPaste(e: ClipboardEvent): void {
   // Translate content to the paste anchor (cursor cell) and clamp on-canvas.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const s of parsed) {
-    if (s.type === 'box') {
+    if (s.type === 'box' || s.type === 'group') {
       minX = Math.min(minX, s.x); minY = Math.min(minY, s.y);
       maxX = Math.max(maxX, s.x + s.w - 1); maxY = Math.max(maxY, s.y + s.h - 1);
     } else if (s.type === 'text') {
@@ -326,6 +327,7 @@ function onKeyDown(e: KeyboardEvent): void {
     case 'b': case 'B': case 'r': case 'R': setTool('box'); break;
     case 'a': case 'A': setTool('arrow'); break;
     case 't': case 'T': setTool('text'); break;
+    case 'g': case 'G': setTool('group'); break;
     case 'e': case 'E':
       if (e.shiftKey) openExport();
       else void exportToClipboard();

@@ -1,5 +1,5 @@
 import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
-import type { BoxShape, Corner, Guide, Shape } from './types';
+import type { BoxShape, Corner, GroupShape, Guide, Shape } from './types';
 import { clamp } from './util';
 
 /* ============================================================
@@ -34,8 +34,8 @@ export function onBoxBorder(s: BoxShape, cx: number, cy: number): boolean {
   return cx === s.x || cx === s.x + s.w - 1 || cy === s.y || cy === s.y + s.h - 1;
 }
 
-/** Resize-handle positions in px, at the box's outer corners. */
-export function boxHandles(s: BoxShape): { c: Corner; px: number; py: number }[] {
+/** Resize-handle positions in px, at the frame's outer corners. */
+export function boxHandles(s: BoxShape | GroupShape): { c: Corner; px: number; py: number }[] {
   return [
     { c: 'nw', px: s.x * CW, py: s.y * CH },
     { c: 'ne', px: (s.x + s.w) * CW, py: s.y * CH },
@@ -50,7 +50,7 @@ export function boxHandles(s: BoxShape): { c: Corner; px: number; py: number }[]
  * to any box they land on; attached endpoints stay attached.
  */
 export function placeFrom(s: Shape, o: Shape, dx: number, dy: number, shapes: Shape[]): void {
-  if (s.type === 'box' && o.type === 'box') {
+  if ((s.type === 'box' && o.type === 'box') || (s.type === 'group' && o.type === 'group')) {
     s.x = clamp(o.x + dx, 0, MAX_COLS - s.w);
     s.y = clamp(o.y + dy, 0, MAX_ROWS - s.h);
   } else if (s.type === 'text' && o.type === 'text') {
@@ -73,7 +73,7 @@ export function placeFrom(s: Shape, o: Shape, dx: number, dy: number, shapes: Sh
 }
 
 /** Smallest box that shows its whole label (never below 3×3). */
-export function boxMinSize(s: BoxShape): [number, number] {
+export function boxMinSize(s: { text: string }): [number, number] {
   if (!s.text) return [3, 3];
   // Borders (2) plus breathing room between label and border.
   const padX = 2;
@@ -84,21 +84,27 @@ export function boxMinSize(s: BoxShape): [number, number] {
   ];
 }
 
-export function fitBoxToLabel(s: BoxShape): void {
+export function fitBoxToLabel(s: BoxShape | GroupShape): void {
   const [minW, minH] = boxMinSize(s);
   if (s.w < minW) s.w = Math.min(minW, MAX_COLS - s.x);
   if (s.h < minH) s.h = Math.min(minH, MAX_ROWS - s.y);
 }
 
+/** Minimum group size: titled frames need the 2-row tab. */
+export function groupMinSize(s: GroupShape): [number, number] {
+  if (!s.text) return [4, 3];
+  return [Math.max(4, s.text.split('\n')[0].length + 4), 5];
+}
+
 /**
- * Snap a dragged box to edge/center alignment with other boxes
- * (within 1 cell). Mutates `s` and returns the guides to draw.
+ * Snap a dragged box/group to edge/center alignment with other
+ * boxes and groups (within 1 cell). Mutates `s`; returns guides.
  */
-export function snapBox(s: BoxShape, shapes: Shape[]): Guide[] {
+export function snapBox(s: BoxShape | GroupShape, shapes: Shape[]): Guide[] {
   let bestX: { diff: number; x: number; guide: Guide } | null = null;
   let bestY: { diff: number; y: number; guide: Guide } | null = null;
   for (const o of shapes) {
-    if (o.type !== 'box' || o.id === s.id) continue;
+    if ((o.type !== 'box' && o.type !== 'group') || o.id === s.id) continue;
     const candX: [number, number][] = [
       [o.x, o.x * CW],                                                    // left edges
       [o.x + o.w - s.w, (o.x + o.w) * CW],                                // right edges
@@ -130,7 +136,7 @@ export function snapBox(s: BoxShape, shapes: Shape[]): Guide[] {
 export function contentExtent(shapes: Shape[]): { x: number; y: number } {
   let x = 0, y = 0;
   for (const s of shapes) {
-    if (s.type === 'box') {
+    if (s.type === 'box' || s.type === 'group') {
       x = Math.max(x, s.x + s.w);
       y = Math.max(y, s.y + s.h);
     } else if (s.type === 'text') {
@@ -145,4 +151,16 @@ export function contentExtent(shapes: Shape[]): { x: number; y: number } {
     }
   }
   return { x, y };
+}
+
+/** Is `s` geometrically inside group `g` (fully within the frame)? */
+export function insideGroup(s: Shape, g: GroupShape): boolean {
+  const inRect = (x: number, y: number) =>
+    x > g.x && x < g.x + g.w - 1 && y > g.y && y < g.y + g.h - 1;
+  if (s.type === 'box' || s.type === 'group')
+    return s.id !== g.id && inRect(s.x, s.y) && inRect(s.x + s.w - 1, s.y + s.h - 1);
+  if (s.type === 'text') return inRect(s.x, s.y);
+  // Arrows ride along when their free endpoints are inside; attached
+  // endpoints follow their boxes regardless.
+  return (s.box1 != null || inRect(s.x1, s.y1)) && (s.box2 != null || inRect(s.x2, s.y2));
 }
