@@ -333,6 +333,16 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   if (b1) { const an = anchorFor(b1, o1, slot, off); p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y; }
   if (b2) { const an = anchorFor(b2, o2, slot, off); p2 = { x: an.x, y: an.y }; ax2 = an.axis; side2 = an.side; a.x2 = an.x; a.y2 = an.y; }
 
+  // A 1-cell jog between opposite side anchors reads badly in ASCII:
+  // nudge one anchor into line when the border span allows it.
+  if (ax1 === 'h' && ax2 === 'h' && side1 !== side2 && Math.abs(p2.y - p1.y) === 1) {
+    if (b2 && p1.y > b2.y && p1.y < b2.y + b2.h - 1) { p2 = { x: p2.x, y: p1.y }; a.y2 = p1.y; }
+    else if (b1 && p2.y > b1.y && p2.y < b1.y + b1.h - 1) { p1 = { x: p1.x, y: p2.y }; a.y1 = p2.y; }
+  } else if (ax1 === 'v' && ax2 === 'v' && side1 !== side2 && Math.abs(p2.x - p1.x) === 1) {
+    if (b2 && p1.x > b2.x && p1.x < b2.x + b2.w - 1) { p2 = { x: p1.x, y: p2.y }; a.x2 = p1.x; }
+    else if (b1 && p2.x > b1.x && p2.x < b1.x + b1.w - 1) { p1 = { x: p2.x, y: p1.y }; a.x1 = p2.x; }
+  }
+
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   if (!ax1 && !ax2) {
     if (dy === 0) ax1 = ax2 = 'h';

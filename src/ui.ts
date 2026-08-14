@@ -1,9 +1,10 @@
 import { clearAll, cycleArrowHeads, deleteSelected, nudge } from './commands';
 import { commitEdit, startEdit } from './editor';
+import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
 import { parseAscii } from './import';
 import { render, setupCanvas, updateToolbar } from './render';
-import { app, genId, getShape, loadDoc, pushUndo, redo, resetView, save, soleSel, uid, undo } from './store';
+import { app, genId, getShape, loadDoc, pushUndo, redo, resetView, save, snapshot, soleSel, uid, undo } from './store';
 import type { Shape, Tool } from './types';
 import { clamp } from './util';
 import { MAX_COLS, MAX_ROWS } from './constants';
@@ -34,6 +35,18 @@ export function setTool(t: Tool): void {
     app.hoverId = null;
   }
   updateToolbar();
+  render();
+}
+
+/** Apply a layout transform — scoped to the selection when one exists. */
+function runLayout(fn: (shapes: Shape[], only?: ReadonlySet<number>) => void): void {
+  if (app.editing != null) commitEdit();
+  const snap = snapshot();
+  fn(app.doc.shapes, app.selection.size ? app.selection : undefined);
+  if (snapshot() !== snap) {
+    pushUndo(snap);
+    save();
+  }
   render();
 }
 
@@ -328,6 +341,8 @@ function onKeyDown(e: KeyboardEvent): void {
     case 'a': case 'A': setTool('arrow'); break;
     case 't': case 'T': setTool('text'); break;
     case 'g': case 'G': setTool('group'); break;
+    case 'l': runLayout(autoLayout); break;
+    case 'L': runLayout(tidy); break;
     case 'e': case 'E':
       if (e.shiftKey) openExport();
       else void exportToClipboard();
@@ -342,6 +357,8 @@ export function initUi(): void {
   $('#redo').addEventListener('click', () => { redo(); render(); });
   $('#delete').addEventListener('click', deleteSelected);
   $('#clear').addEventListener('click', clearAll);
+  $('#layout').addEventListener('click', () => runLayout(autoLayout));
+  $('#tidy').addEventListener('click', () => runLayout(tidy));
   $('#export').addEventListener('click', (e) => {
     if ((e as MouseEvent).shiftKey) openExport();
     else void exportToClipboard();
