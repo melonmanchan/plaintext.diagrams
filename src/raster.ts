@@ -178,15 +178,18 @@ export function pathMidpoint(pts: Point[]): Point {
   return pts[0];
 }
 
-/** Pick the border side of `b` facing `o`; returns the cell just OUTSIDE it. */
-function anchor(b: BoxShape, o: Point): { x: number; y: number; axis: 'h' | 'v' } {
+/**
+ * Pick the border side of `b` facing `o`; returns the cell just OUTSIDE it.
+ * `off` shifts the anchor along the side (parallel-arrow spreading).
+ */
+function anchor(b: BoxShape, o: Point, off = 0): { x: number; y: number; axis: 'h' | 'v' } {
   const cx = b.x + (b.w - 1) / 2, cy = b.y + (b.h - 1) / 2;
   const dx = (o.x - cx) / Math.max(1, b.w / 2);
   const dy = (o.y - cy) / Math.max(1, b.h / 2);
   if (Math.abs(dx) >= Math.abs(dy)) {
-    return { x: dx >= 0 ? b.x + b.w : b.x - 1, y: clamp(o.y, b.y + 1, b.y + b.h - 2), axis: 'h' };
+    return { x: dx >= 0 ? b.x + b.w : b.x - 1, y: clamp(o.y + off, b.y + 1, b.y + b.h - 2), axis: 'h' };
   }
-  return { x: clamp(o.x, b.x + 1, b.x + b.w - 2), y: dy >= 0 ? b.y + b.h : b.y - 1, axis: 'v' };
+  return { x: clamp(o.x + off, b.x + 1, b.x + b.w - 2), y: dy >= 0 ? b.y + b.h : b.y - 1, axis: 'v' };
 }
 
 /**
@@ -201,12 +204,26 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): Point[] {
     return s && s.type === 'box' ? s : null;
   };
   const b1 = boxOf(a.box1), b2 = boxOf(a.box2);
+
+  // Arrows sharing the same attached pair get spread along the border
+  // (and distinct mid-lines) instead of overlapping.
+  let off = 0;
+  if (b1 && b2) {
+    const siblings = shapes.filter((s): s is ArrowShape =>
+      s.type === 'arrow' &&
+      ((s.box1 === a.box1 && s.box2 === a.box2) || (s.box1 === a.box2 && s.box2 === a.box1)));
+    if (siblings.length > 1) {
+      const i = siblings.findIndex((s) => s.id === a.id);
+      off = (i - (siblings.length - 1) / 2) * 2;
+    }
+  }
+
   let p1: Point = { x: a.x1, y: a.y1 }, p2: Point = { x: a.x2, y: a.y2 };
   let ax1: 'h' | 'v' | null = null, ax2: 'h' | 'v' | null = null;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
-  if (b1) { const an = anchor(b1, o1); p1 = { x: an.x, y: an.y }; ax1 = an.axis; a.x1 = an.x; a.y1 = an.y; }
-  if (b2) { const an = anchor(b2, o2); p2 = { x: an.x, y: an.y }; ax2 = an.axis; a.x2 = an.x; a.y2 = an.y; }
+  if (b1) { const an = anchor(b1, o1, off); p1 = { x: an.x, y: an.y }; ax1 = an.axis; a.x1 = an.x; a.y1 = an.y; }
+  if (b2) { const an = anchor(b2, o2, off); p2 = { x: an.x, y: an.y }; ax2 = an.axis; a.x2 = an.x; a.y2 = an.y; }
 
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   if (!ax1 && !ax2) {
@@ -224,13 +241,13 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): Point[] {
   if (ax1 === 'h' && ax2 === 'h') {
     if (dy === 0) pts = [p1, p2];
     else {
-      const mx = (p1.x + p2.x) >> 1;
+      const mx = ((p1.x + p2.x) >> 1) + off;
       pts = [p1, { x: mx, y: p1.y }, { x: mx, y: p2.y }, p2];
     }
   } else if (ax1 === 'v' && ax2 === 'v') {
     if (dx === 0) pts = [p1, p2];
     else {
-      const my = (p1.y + p2.y) >> 1;
+      const my = ((p1.y + p2.y) >> 1) + off;
       pts = [p1, { x: p1.x, y: my }, { x: p2.x, y: my }, p2];
     }
   } else if (ax1 === 'h') {

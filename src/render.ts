@@ -148,8 +148,14 @@ function drawHandles(): void {
       ctx.strokeRect(h.px - 4, h.py - 4, 8, 8);
     }
   } else if (s.type === 'arrow') {
-    // Hollow rings around the endpoint cells: the head glyph stays readable.
-    for (const [x, y] of [[s.x1, s.y1], [s.x2, s.y2]] as const) {
+    // Hollow rings on FREE endpoints only — attached ends follow their
+    // box automatically and need no handle cluttering the border.
+    const ends: [number, number, boolean][] = [
+      [s.x1, s.y1, s.box1 != null],
+      [s.x2, s.y2, s.box2 != null],
+    ];
+    for (const [x, y, attached] of ends) {
+      if (attached) continue;
       const cx = x * CW + CW / 2, cy = y * CH + CH / 2;
       ctx.beginPath();
       ctx.arc(cx, cy, 8, 0, Math.PI * 2);

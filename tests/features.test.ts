@@ -56,6 +56,23 @@ describe('growing world', () => {
   });
 });
 
+describe('parallel arrows between the same boxes', () => {
+  it('spread onto distinct rows instead of overlapping', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 6, 7),
+      box(2, 20, 0, 6, 7),
+      arrow(3, { box1: 1, box2: 2 }),
+      arrow(4, { box1: 1, box2: 2 }),
+      arrow(5, { box1: 2, box2: 1 }),
+    ];
+    const out = exportAscii(shapes);
+    const arrowRows = out.split('\n').filter((l) => l.includes('>') || l.includes('<'));
+    expect(arrowRows).toHaveLength(3);
+    expect(out.match(/>/g)).toHaveLength(2);
+    expect(out.match(/</g)).toHaveLength(1);
+  });
+});
+
 describe('unicode style', () => {
   it('exports box-drawing characters with proper corners and junctions', () => {
     const shapes: Shape[] = [

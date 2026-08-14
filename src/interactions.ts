@@ -166,7 +166,9 @@ function onMouseMove(e: MouseEvent): void {
   }
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
-  document.querySelector('#hint')!.textContent = hintText(cx, cy);
+  document.querySelector('#hint')!.textContent = connectFrom != null
+    ? `${cx},${cy}   right-click another box to connect · right-click elsewhere to cancel`
+    : hintText(cx, cy);
   app.mouseCell = { x: cx, y: cy };
 
   const d = app.drag;
@@ -336,19 +338,55 @@ function updateCursor(px: number, py: number, cx: number, cy: number): void {
   canvas.style.cursor = cur;
 }
 
+// Pending source box for right-click → right-click connection.
+let connectFrom: number | null = null;
+
+function onContextMenu(e: MouseEvent): void {
+  e.preventDefault();
+  const { px, py } = eventPos(e);
+  const { x: cx, y: cy } = cellAt(px, py);
+  const hit = shapeIdAt(cx, cy);
+  const s = hit != null ? getShape(hit) : null;
+
+  if (s && s.type === 'arrow') {
+    connectFrom = null;
+    app.selection = new Set([s.id]);
+    cycleArrowHeads();
+    return;
+  }
+  if (s && s.type === 'box') {
+    const from = connectFrom != null ? getShape(connectFrom) : null;
+    if (from && from.type === 'box' && from.id !== s.id) {
+      // Second right-click: connect the two boxes.
+      const snap = snapshot();
+      const id = uid();
+      app.doc.shapes.push({
+        type: 'arrow', id,
+        x1: from.x + (from.w >> 1), y1: from.y + (from.h >> 1),
+        x2: s.x + (s.w >> 1), y2: s.y + (s.h >> 1),
+        box1: from.id, box2: s.id,
+      });
+      pushUndo(snap);
+      connectFrom = null;
+      app.selection = new Set([id]);
+      save();
+      render();
+    } else {
+      // First right-click: remember the source and highlight it.
+      connectFrom = s.id;
+      app.selection = new Set([s.id]);
+      render();
+      document.querySelector('#hint')!.textContent =
+        `${cx},${cy}   right-click another box to connect it to "${s.text || 'this box'}"`;
+    }
+    return;
+  }
+  connectFrom = null;
+}
+
 export function initInteractions(): void {
   canvas.addEventListener('mousedown', onMouseDown);
-  canvas.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const { px, py } = eventPos(e);
-    const { x: cx, y: cy } = cellAt(px, py);
-    const hit = shapeIdAt(cx, cy);
-    const s = hit != null ? getShape(hit) : null;
-    if (s && s.type === 'arrow') {
-      app.selection = new Set([s.id]);
-      cycleArrowHeads();
-    }
-  });
+  canvas.addEventListener('contextmenu', onContextMenu);
   canvas.addEventListener('dblclick', onDblClick);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
