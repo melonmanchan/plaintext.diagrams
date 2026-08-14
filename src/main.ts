@@ -4,7 +4,7 @@ import { exportAscii } from './export';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
-import { app, genId, loadDoc, save, uid } from './store';
+import { app, genId, loadDoc, loadHistory, save, uid } from './store';
 import type { DocState } from './types';
 import { initUi, setTool, switchProject, updateProjectBar } from './ui';
 
@@ -43,6 +43,7 @@ function boot(): void {
     }
     save();
   }
+  loadHistory(app.currentProject);
   updateProjectBar();
 }
 

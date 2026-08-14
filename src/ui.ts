@@ -4,7 +4,7 @@ import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
 import { parseAscii } from './import';
 import { render, setupCanvas, updateToolbar } from './render';
-import { app, genId, getShape, loadDoc, pushUndo, redo, resetView, save, snapshot, soleSel, uid, undo } from './store';
+import { app, dropHistory, genId, getShape, loadDoc, loadHistory, pushUndo, redo, resetView, save, snapshot, soleSel, uid, undo } from './store';
 import type { Shape, Tool } from './types';
 import { clamp } from './util';
 import { MAX_COLS, MAX_ROWS } from './constants';
@@ -72,6 +72,7 @@ export function switchProject(id: string): void {
   app.currentProject = id;
   app.doc = loadDoc(id) ?? { seq: 1, shapes: [] };
   resetView();
+  loadHistory(id);
   save();
   updateProjectBar();
   render();
@@ -105,6 +106,7 @@ function deleteProject(): void {
   const p = app.projects.find((pr) => pr.id === app.currentProject);
   if (!p || !confirm(`Delete project "${p.name}" and its diagram?`)) return;
   try { localStorage.removeItem('vibedraw:doc:' + p.id); } catch { /* ignore */ }
+  dropHistory(p.id);
   app.projects = app.projects.filter((pr) => pr.id !== p.id);
   if (!app.projects.length) app.projects.push({ id: genId(), name: 'Untitled' });
   switchProject(app.projects[0].id);

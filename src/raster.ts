@@ -182,6 +182,11 @@ export function stylize(r: Raster): string[] {
   const connects = (x: number, y: number, axis: 'h' | 'v'): boolean => {
     if (x < 0 || y < 0 || x >= r.cols || y >= r.rows) return false;
     const i = y * r.cols + x;
+    if (r.pri[i] === PRI.head) {
+      // an arrowhead continues the line along its own axis
+      const c = r.ch[i];
+      return axis === 'h' ? c === '<' || c === '>' : c === 'v' || c === '^';
+    }
     if (isLinePri(r.pri[i])) {
       const c = r.ch[i];
       return c === '+' || c === (axis === 'h' ? '-' : '|');

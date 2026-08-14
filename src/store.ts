@@ -74,6 +74,39 @@ export function save(): void {
     localStorage.setItem(DOC_KEY(app.currentProject), snapshot());
     localStorage.setItem(STORE_INDEX, JSON.stringify({ projects: app.projects, current: app.currentProject }));
   } catch { /* private mode / quota */ }
+  persistHistory();
+}
+
+const HIST_KEY = (id: string) => 'vibedraw:hist:' + id;
+
+function persistHistory(): void {
+  const payload = (n: number) =>
+    JSON.stringify({ undo: app.undoStack.slice(-n), redo: app.redoStack.slice(-n) });
+  try {
+    localStorage.setItem(HIST_KEY(app.currentProject), payload(100));
+  } catch {
+    // quota: retry with a short tail, else live without persisted history
+    try { localStorage.setItem(HIST_KEY(app.currentProject), payload(15)); }
+    catch { /* ignore */ }
+  }
+}
+
+/** Restore the persisted undo/redo stacks for a project. */
+export function loadHistory(id: string): void {
+  app.undoStack = [];
+  app.redoStack = [];
+  try {
+    const h = JSON.parse(localStorage.getItem(HIST_KEY(id)) ?? 'null');
+    if (h && Array.isArray(h.undo) && Array.isArray(h.redo)) {
+      app.undoStack = h.undo.filter((s: unknown): s is string => typeof s === 'string');
+      app.redoStack = h.redo.filter((s: unknown): s is string => typeof s === 'string');
+    }
+  } catch { /* corrupt entry */ }
+}
+
+/** Remove a project's persisted history. */
+export function dropHistory(id: string): void {
+  try { localStorage.removeItem(HIST_KEY(id)); } catch { /* ignore */ }
 }
 
 export function loadDoc(id: string): DocState | null {

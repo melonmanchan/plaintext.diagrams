@@ -74,10 +74,24 @@ export function autoLayout(shapes: Shape[], only?: ReadonlySet<number>): void {
     if (pos) targets.set(n.id, { x: Math.round(pos.x - n.w / 2), y: Math.round(pos.y - n.h / 2) });
   }
   let shiftX = 0, shiftY = 0;
-  if (only && targets.size) {
-    const placed = nodes.filter((n) => targets.has(n.id));
+  const placed = nodes.filter((n) => targets.has(n.id));
+  if (only && placed.length) {
     shiftX = Math.min(...placed.map((n) => n.x)) - Math.min(...placed.map((n) => targets.get(n.id)!.x));
     shiftY = Math.min(...placed.map((n) => n.y)) - Math.min(...placed.map((n) => targets.get(n.id)!.y));
+  }
+
+  // Nodes that all live inside one group must stay inside it: anchor
+  // the arrangement within the frame's interior, then grow the frame
+  // if the new arrangement needs more room.
+  const host = only
+    ? groups.find((h) => !only.has(h.id) && placed.every((n) => insideGroup(n, h)))
+    : undefined;
+  if (host && placed.length) {
+    const top = host.y + (host.text ? 2 : 0);
+    const minTx = Math.min(...placed.map((n) => targets.get(n.id)!.x)) + shiftX;
+    const minTy = Math.min(...placed.map((n) => targets.get(n.id)!.y)) + shiftY;
+    shiftX += Math.max(0, host.x + 3 - minTx);
+    shiftY += Math.max(0, top + 2 - minTy);
   }
 
   for (const n of nodes) {
@@ -90,6 +104,13 @@ export function autoLayout(shapes: Shape[], only?: ReadonlySet<number>): void {
     for (const s of carried.get(n.id) ?? []) translate(s, dx, dy);
     n.x = nx;
     n.y = ny;
+  }
+
+  if (host && placed.length) {
+    const maxX = Math.max(...placed.map((n) => n.x + n.w));
+    const maxY = Math.max(...placed.map((n) => n.y + n.h));
+    host.w = Math.max(host.w, Math.min(MAX_COLS - host.x, maxX - host.x + 3));
+    host.h = Math.max(host.h, Math.min(MAX_ROWS - host.y, maxY - host.y + 2));
   }
 }
 

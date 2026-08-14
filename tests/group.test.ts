@@ -67,6 +67,53 @@ describe('group frames', () => {
     expect(exportAscii(reparsed)).toBe(first);
   });
 
+  it('unicode export parses back into a real group, not text', () => {
+    const shapes: Shape[] = [
+      group(1, 0, 0, 30, 9, 'Backend'),
+      box(2, 3, 4, 9, 3, 'API'),
+    ];
+    const uni = exportAscii(shapes, true);
+    const reparsed = parseAscii(uni);
+    const g = reparsed.find((s): s is GroupShape => s.type === 'group');
+    expect(g).toBeDefined();
+    expect(g!.text).toBe('Backend');
+    expect(reparsed.filter((s) => s.type === 'text')).toHaveLength(0);
+    expect(exportAscii(reparsed, true)).toBe(uni);
+  });
+
+  it('recovers labels overlaid on vertical arrows', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 12, 3, 'Top'),
+      box(2, 0, 12, 12, 3, 'Bottom'),
+      arrow(3, { box1: 1, box2: 2, text: 'click events' }),
+    ];
+    const out = exportAscii(shapes);
+    const reparsed = parseAscii(out);
+    const a = reparsed.find((s): s is ArrowShape => s.type === 'arrow');
+    expect(a).toBeDefined();
+    expect(a!.text).toBe('click events');
+    expect(reparsed.filter((s) => s.type === 'text')).toHaveLength(0);
+  });
+
+  it('parses a group whose border is crossed by arrows', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 4, 10, 3, 'Out'),
+      group(2, 20, 0, 30, 12, 'Zone'),
+      box(3, 26, 5, 10, 3, 'In'),
+      arrow(4, { box1: 1, box2: 3 }), // crosses the group's left border
+    ];
+    const out = exportAscii(shapes);
+    const reparsed = parseAscii(out);
+    const g = reparsed.find((s): s is GroupShape => s.type === 'group');
+    expect(g).toBeDefined();
+    expect(g!.text).toBe('Zone');
+    const a = reparsed.find((s): s is ArrowShape => s.type === 'arrow');
+    expect(a).toBeDefined();
+    expect(a!.box1).not.toBeNull();
+    expect(a!.box2).not.toBeNull();
+    expect(exportAscii(reparsed)).toBe(out);
+  });
+
   it('insideGroup covers boxes, texts, and free arrows', () => {
     const g = group(1, 0, 0, 30, 10);
     expect(insideGroup(box(2, 5, 3, 6, 3), g)).toBe(true);

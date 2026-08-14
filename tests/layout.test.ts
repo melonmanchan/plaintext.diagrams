@@ -64,6 +64,24 @@ describe('autoLayout', () => {
     expect(Math.min(a.x, b.x)).toBe(20);                    // anchored
     expect(Math.min(a.y, b.y)).toBe(10);
   });
+
+  it('keeps a selection laid out inside its group, growing the frame if needed', () => {
+    const g = group(1, 4, 4, 40, 20, 'Zone');
+    const a = box(2, 8, 10, 10, 3, 'A');
+    const b = box(3, 9, 14, 10, 3, 'B');
+    const c = box(4, 10, 18, 10, 3, 'C');
+    const shapes: Shape[] = [g, a, b, c,
+      arrow(5, { box1: 2, box2: 3 }),
+      arrow(6, { box1: 3, box2: 4 }),
+    ];
+    autoLayout(shapes, new Set([2, 3, 4]));
+    for (const s of [a, b, c]) {
+      expect(s.x).toBeGreaterThan(g.x);
+      expect(s.y).toBeGreaterThan(g.y + 2); // below tab + top border
+      expect(s.x + s.w).toBeLessThan(g.x + g.w);
+      expect(s.y + s.h).toBeLessThan(g.y + g.h);
+    }
+  });
 });
 
 describe('tidy', () => {

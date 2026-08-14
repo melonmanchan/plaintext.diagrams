@@ -25,7 +25,7 @@ const UNI_TO_ASCII: Record<string, string> = {
 };
 
 export function parseAscii(text: string): Shape[] {
-  const normalized = text.replace(/[─│┌┐└┘├┤┬┴┼▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
+  const normalized = text.replace(/[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
   const lines = normalized.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, ''));
   const H = lines.length;
   const at = (x: number, y: number): string =>
@@ -42,43 +42,54 @@ export function parseAscii(text: string): Shape[] {
   const arrows: ArrowShape[] = [];
   const texts: TextShape[] = [];
 
-  /* ---------- rectangles: groups (+==+) then boxes (+--+) ---------- */
+  /* ---------- rectangles: groups (+==+) then boxes (+--+) ----------
+   * Arrows crossing a border overwrite one border cell with their own
+   * line character, so walks tolerate the perpendicular line char as a
+   * crossing — and consumption leaves those cells to the arrow tracer.
+   */
+
+  const sideOk = (c: string) => isV(c) || c === '-';
+  const takeSide = (x: number, y: number) => { if (at(x, y) !== '-') take(x, y); };
+  const takeEdge = (x: number, y: number) => { if (at(x, y) !== '|') take(x, y); };
 
   function rectBottom(x1: number, x2: number, y1: number, horiz: (c: string) => boolean): number | null {
     if (x2 - x1 < 2) return null;
-    for (let y2 = y1 + 1; isV(at(x1, y2)) && isV(at(x2, y2)); y2++) {
+    const edgeOk = (c: string) => horiz(c) || c === '|';
+    for (let y2 = y1 + 1; sideOk(at(x1, y2)) && sideOk(at(x2, y2)); y2++) {
       if (at(x1, y2) !== '+' || at(x2, y2) !== '+' || y2 - y1 < 2) continue;
       let ok = true;
-      for (let i = x1 + 1; i < x2 && ok; i++) ok = horiz(at(i, y2));
+      for (let i = x1 + 1; i < x2 && ok; i++) ok = edgeOk(at(i, y2));
       if (!ok) continue; // junction row — keep scanning down
-      for (let i = x1; i <= x2; i++) { take(i, y1); take(i, y2); }
-      for (let j = y1; j <= y2; j++) { take(x1, j); take(x2, j); }
+      for (let i = x1; i <= x2; i++) { takeEdge(i, y1); takeEdge(i, y2); }
+      for (let j = y1; j <= y2; j++) { takeSide(x1, j); takeSide(x2, j); }
       return y2;
     }
     return null;
   }
 
   const isHG = (c: string) => c === '=' || c === '+';
+  const topOk = (h: (c: string) => boolean) => (c: string) => h(c) || c === '|';
 
   // A group is either a plain +==+ frame, or a tabbed one:
   //   +=======+
   //   | Title |
   //   +=======+==============+   ← frame top continues right of the tab
   function groupAt(x: number, y: number): GroupShape | null {
-    for (let x2 = x + 1; isHG(at(x2, y)); x2++) {
+    const hgTop = topOk(isHG);
+    for (let x2 = x + 1; hgTop(at(x2, y)); x2++) {
       if (at(x2, y) !== '+' || !lines[y].slice(x + 1, x2).includes('=')) continue;
-      for (let yb = y + 1; isV(at(x, yb)) && isV(at(x2, yb)); yb++) {
+      for (let yb = y + 1; sideOk(at(x, yb)) && sideOk(at(x2, yb)); yb++) {
         if (at(x, yb) !== '+' || at(x2, yb) !== '+') continue;
         if (at(x2 + 1, yb) === '=') {
           // tab: the corner row continues right into the frame's top border
           if (yb - y !== 2) break;
-          for (let xr = x2 + 1; isHG(at(xr, yb)); xr++) {
+          for (let xr = x2 + 1; hgTop(at(xr, yb)); xr++) {
             if (at(xr, yb) !== '+') continue;
             const yBot = rectBottom(x, xr, yb, isHG);
             if (yBot == null) continue;
-            for (let i = x; i <= x2; i++) take(i, y);
-            take(x, y + 1);
-            take(x2, y + 1);
+            for (let i = x; i <= x2; i++) takeEdge(i, y);
+            takeSide(x, y + 1);
+            takeSide(x2, y + 1);
             let title = '';
             for (let i = x + 2; i <= x2 - 2; i++) {
               title += free(i, y + 1) ? at(i, y + 1) : ' ';
@@ -90,10 +101,11 @@ export function parseAscii(text: string): Shape[] {
         }
         if (yb - y < 2) continue;
         let ok = true;
-        for (let i = x + 1; i < x2 && ok; i++) ok = isHG(at(i, yb));
+        const edge = topOk(isHG);
+        for (let i = x + 1; i < x2 && ok; i++) ok = edge(at(i, yb));
         if (!ok) continue;
-        for (let i = x; i <= x2; i++) { take(i, y); take(i, yb); }
-        for (let j = y; j <= yb; j++) { take(x, j); take(x2, j); }
+        for (let i = x; i <= x2; i++) { takeEdge(i, y); takeEdge(i, yb); }
+        for (let j = y; j <= yb; j++) { takeSide(x, j); takeSide(x2, j); }
         return { type: 'group', id: seq++, x, y, w: x2 - x + 1, h: yb - y + 1, text: '' };
       }
     }
@@ -111,7 +123,7 @@ export function parseAscii(text: string): Shape[] {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < lines[y].length; x++) {
       if (at(x, y) !== '+' || !free(x, y)) continue;
-      for (let x2 = x + 1; isH(at(x2, y)); x2++) {
+      for (let x2 = x + 1; topOk(isH)(at(x2, y)); x2++) {
         if (at(x2, y) !== '+') continue;
         const y2 = rectBottom(x, x2, y, isH);
         if (y2 != null) {
@@ -206,6 +218,23 @@ export function parseAscii(text: string): Shape[] {
         const s = chars.join('').trim();
         if (s && !label) label = s;
         labelCells.push(...gap);
+      } else {
+        // Vertical line: a label overlays it as a horizontal text run
+        // crossing our column — capture that run as the arrow's label.
+        for (const [gx, gy] of gap) {
+          if (at(gx, gy) === ' ') continue;
+          const stopChar = (c: string) => c === '-' || c === '|' || c === '+' || c === '=';
+          let lo = gx, hi = gx;
+          while (free(lo - 1, gy) && !stopChar(at(lo - 1, gy)) &&
+                 !(at(lo - 1, gy) === ' ' && at(lo - 2, gy) === ' ')) lo--;
+          while (free(hi + 1, gy) && !stopChar(at(hi + 1, gy)) &&
+                 !(at(hi + 1, gy) === ' ' && at(hi + 2, gy) === ' ')) hi++;
+          const s = lines[gy].slice(lo, hi + 1).trim();
+          if (s && !label) {
+            label = s;
+            for (let i = lo; i <= hi; i++) labelCells.push([i, gy]);
+          }
+        }
       }
       cx += dir[0] * resume;
       cy += dir[1] * resume;
