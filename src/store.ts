@@ -13,6 +13,8 @@ export const app = {
   hoverId: null as number | null,
   /** Shape id under inline text edit (editor.ts owns the textarea). */
   editing: null as number | null,
+  /** Lane index under edit when the edited shape is a swimlane group. */
+  editingLane: null as number | null,
   drag: null as Drag | null,
   /** Last raster; render.ts writes it, hit-testing reads it. */
   grid: null as Raster | null,
@@ -26,8 +28,6 @@ export const app = {
   mouseCell: null as { x: number; y: number } | null,
   /** Active snap-alignment guides while dragging. */
   guides: [] as Guide[],
-  /** Render/export with Unicode box-drawing characters. */
-  unicode: true,
   /** Current world size in cells; grows/shrinks with content. */
   world: { cols: COLS, rows: ROWS },
 };

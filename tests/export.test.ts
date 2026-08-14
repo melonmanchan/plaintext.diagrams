@@ -15,7 +15,7 @@ describe('exportAscii', () => {
 
   it('renders a box with a centered label, trimmed to content bounds', () => {
     expect(exportAscii([box(1, 2, 1, 7, 3, 'hi')])).toBe(
-      ['+-----+', '| hi  |', '+-----+'].join('\n'),
+      ['┌─────┐', '│ hi  │', '└─────┘'].join('\n'),
     );
   });
 
@@ -25,9 +25,9 @@ describe('exportAscii', () => {
     const shapes: Shape[] = [a, b, arrow(3, { box1: 1, box2: 2 })];
     expect(exportAscii(shapes)).toBe(
       [
-        '+---+       +---+',
-        '|   |------>|   |',
-        '+---+       +---+',
+        '┌───┐       ┌───┐',
+        '│   │──────▶│   │',
+        '└───┘       └───┘',
       ].join('\n'),
     );
   });
@@ -39,13 +39,13 @@ describe('exportAscii', () => {
     exportAscii(shapes); // resolve once at the original spot
     b.y = 10;
     const out = exportAscii(shapes);
-    expect(out).toContain('v'); // approach turned vertical
+    expect(out).toContain('▼'); // approach turned vertical
     expect(out.split('\n').length).toBeGreaterThan(3);
   });
 
   it('embeds an arrow label mid-line with one space of padding', () => {
     const shapes: Shape[] = [arrow(1, { x1: 0, y1: 0, x2: 10, y2: 0, text: 'go' })];
-    expect(exportAscii(shapes)).toBe('--- go --->');
+    expect(exportAscii(shapes)).toBe('─── go ───▶');
   });
 
   it('renders free-standing multi-line text', () => {

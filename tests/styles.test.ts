@@ -16,10 +16,32 @@ const arrow = (id: number, over: Partial<ArrowShape>): ArrowShape =>
 describe('dashed arrows', () => {
   it('render with parity gaps, head and tail intact', () => {
     const out = exportAscii([arrow(1, { x1: 0, y1: 0, x2: 12, y2: 0, style: 'dashed' })]);
-    expect(out.startsWith('-')).toBe(true);
-    expect(out.endsWith('>')).toBe(true);
-    expect(out).toContain(' - ');
+    expect(out.startsWith('─')).toBe(true);
+    expect(out.endsWith('▶')).toBe(true);
+    expect(out).toContain(' ─ ');
     expect(out.length).toBe(13);
+  });
+
+  it('vertical dashed runs render dotted on every cell', () => {
+    const out = exportAscii([arrow(1, { x1: 0, y1: 0, x2: 0, y2: 6, style: 'dashed' })]);
+    const lines = out.split('\n');
+    expect(lines).toHaveLength(7);
+    for (const l of lines.slice(0, 6)) expect(l).toBe('┊');
+    expect(lines[6]).toBe('▼');
+  });
+
+  it('vertical dotted round-trips with style and attachments', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 10, 3, 'Top'), box(2, 0, 10, 10, 3, 'Bot'),
+      arrow(3, { box1: 1, box2: 2, style: 'dashed' }),
+    ];
+    const first = exportAscii(shapes);
+    expect(first).toContain('┊');
+    const reparsed = parseAscii(first);
+    const a = reparsed.find((s): s is ArrowShape => s.type === 'arrow');
+    expect(a?.style).toBe('dashed');
+    expect([a?.box1, a?.box2]).toEqual([1, 2]);
+    expect(exportAscii(reparsed)).toBe(first);
   });
 
   it('round-trip: parse detects dashed and re-renders identically', () => {
@@ -46,16 +68,13 @@ describe('dashed arrows', () => {
 });
 
 describe('rounded boxes', () => {
-  it("render with . and ' corners in ASCII and rounded unicode", () => {
+  it('render with rounded unicode corners', () => {
     const b: BoxShape = { ...box(1, 0, 0, 10, 3, 'Go'), style: 'round' };
     expect(exportAscii([b])).toBe([
-      '.--------.',
-      '|   Go   |',
-      "'--------'",
+      '╭────────╮',
+      '│   Go   │',
+      '╰────────╯',
     ].join('\n'));
-    const uni = exportAscii([b], true);
-    expect(uni).toContain('╭────────╮');
-    expect(uni).toContain('╰────────╯');
   });
 
   it('round-trip preserves the style and attachments', () => {
@@ -77,14 +96,14 @@ describe('swimlanes', () => {
   it('render a header band with separators and lane titles', () => {
     const g: GroupShape = { ...group(1, 0, 0, 31, 8), lanes: ['Client', 'API', 'Worker'] };
     expect(exportAscii([g])).toBe([
-      '+=========+=========+=========+',
-      '| Client  | API     | Worker  |',
-      '+=========+=========+=========+',
-      '|         |         |         |',
-      '|         |         |         |',
-      '|         |         |         |',
-      '|         |         |         |',
-      '+=========+=========+=========+',
+      '╔═════════╦═════════╦═════════╗',
+      '║ Client  ║ API     ║ Worker  ║',
+      '╠═════════╬═════════╬═════════╣',
+      '║         ║         ║         ║',
+      '║         ║         ║         ║',
+      '║         ║         ║         ║',
+      '║         ║         ║         ║',
+      '╚═════════╩═════════╩═════════╝',
     ].join('\n'));
   });
 

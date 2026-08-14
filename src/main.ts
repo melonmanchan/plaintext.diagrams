@@ -47,7 +47,6 @@ function boot(): void {
   updateProjectBar();
 }
 
-try { app.unicode = localStorage.getItem('vibedraw:style') !== 'ascii'; } catch { /* ignore */ }
 setupCanvas();
 initUi();
 initInteractions();
@@ -63,8 +62,10 @@ window.__app = {
   set doc(d: DocState) { app.doc = d; app.selection = new Set(); render(); },
   get selection() { return [...app.selection]; },
   get projects() { return app.projects; },
+  /** Last painted raster — reflects render-time label hiding. */
+  get grid() { return app.grid; },
   render,
-  exportAscii: () => exportAscii(app.doc.shapes, app.unicode),
+  exportAscii: () => exportAscii(app.doc.shapes),
   rasterize,
   setTool,
   switchProject,

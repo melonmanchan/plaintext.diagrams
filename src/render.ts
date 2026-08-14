@@ -57,7 +57,21 @@ function shapeColor(s: Shape | null): string {
 export function render(): void {
   syncWorldSize();
   const { W, H } = worldPx();
-  const grid = rasterize(app.doc.shapes, app.world.cols, app.world.rows);
+  // Hide the edited shape's label — the editor overlay replaces it visually.
+  let paintShapes = app.doc.shapes;
+  if (app.editing != null) {
+    paintShapes = paintShapes.map((s) => {
+      if (s.id !== app.editing) return s;
+      if (s.type === 'group') {
+        if (app.editingLane != null && s.lanes)
+          return { ...s, lanes: s.lanes.map((t, i) => (i === app.editingLane ? '' : t)) };
+        // space-pad the title so the tab frame keeps its geometry
+        return { ...s, text: s.text ? ' '.repeat(s.text.split('\n')[0].length) : s.text };
+      }
+      return { ...s, text: '' };
+    });
+  }
+  const grid = rasterize(paintShapes, app.world.cols, app.world.rows);
   app.grid = grid;
 
   ctx.fillStyle = dotPattern ?? COLOR.bg;
@@ -88,7 +102,7 @@ export function render(): void {
   ctx.font = FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const display = app.unicode ? stylize(grid) : grid.ch;
+  const display = stylize(grid);
   const colorCache = new Map<number, string>();
   for (let y = 0; y < grid.rows; y++)
     for (let x = 0; x < grid.cols; x++) {

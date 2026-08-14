@@ -15,7 +15,7 @@ const HEAD_DIR: Record<string, [number, number]> = {
 
 /** Unicode box-drawing → ASCII normalization, so both styles parse. */
 const UNI_TO_ASCII: Record<string, string> = {
-  '─': '-', '│': '|',
+  '─': '-', '│': '|', '┊': ':', '╎': ':',
   '┌': '+', '┐': '+', '└': '+', '┘': '+',
   '├': '+', '┤': '+', '┬': '+', '┴': '+', '┼': '+',
   '═': '=', '║': '|',
@@ -26,7 +26,7 @@ const UNI_TO_ASCII: Record<string, string> = {
 };
 
 export function parseAscii(text: string): Shape[] {
-  const normalized = text.replace(/[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
+  const normalized = text.replace(/[─│┊╎┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
   const lines = normalized.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, ''));
   const H = lines.length;
   const at = (x: number, y: number): string =>
@@ -210,7 +210,8 @@ export function parseAscii(text: string): Shape[] {
   }
 
   function traceArrow(hx: number, hy: number, head: [number, number]): ArrowShape | null {
-    const lineOf = (v: [number, number]) => (v[1] === 0 ? '-' : '|');
+    /** Line-body chars along an axis; vertical dashed runs use ':'. */
+    const isLine = (c: string, v: [number, number]) => (v[1] === 0 ? c === '-' : c === '|' || c === ':');
     // The line usually continues straight behind the head, but heads that
     // point into a box may be approached perpendicular (e.g. "----^").
     const back: [number, number] = [-head[0], -head[1]];
@@ -221,10 +222,10 @@ export function parseAscii(text: string): Shape[] {
     let dir: [number, number] = back;
     for (const p of probes) {
       const c1 = at(hx + p[0], hy + p[1]);
-      if (free(hx + p[0], hy + p[1]) && (c1 === lineOf(p) || c1 === '+')) { dir = p; break; }
+      if (free(hx + p[0], hy + p[1]) && (isLine(c1, p) || c1 === '+')) { dir = p; break; }
       // dashed lines may start with a gap right behind the head
       const c2 = at(hx + p[0] * 2, hy + p[1] * 2);
-      if (c1 === ' ' && free(hx + p[0] * 2, hy + p[1] * 2) && c2 === lineOf(p)) { dir = p; break; }
+      if (c1 === ' ' && free(hx + p[0] * 2, hy + p[1] * 2) && isLine(c2, p)) { dir = p; break; }
     }
     const cells: [number, number][] = [[hx, hy]];
     const labelCells: [number, number][] = [];
@@ -235,7 +236,7 @@ export function parseAscii(text: string): Shape[] {
 
     for (;;) {
       const ch = at(cx, cy);
-      if (free(cx, cy) && ch === lineOf(dir)) {
+      if (free(cx, cy) && isLine(ch, dir)) {
         cells.push([cx, cy]);
         cx += dir[0]; cy += dir[1];
         continue;
@@ -249,7 +250,7 @@ export function parseAscii(text: string): Shape[] {
       if (ch === '+') {
         // Crossing/junction: prefer continuing straight through.
         const sx = cx + dir[0], sy = cy + dir[1];
-        if (at(sx, sy) === lineOf(dir) && free(sx, sy)) {
+        if (isLine(at(sx, sy), dir) && free(sx, sy)) {
           if (free(cx, cy)) { cells.push([cx, cy]); } // shared junction may be consumed
           cx = sx; cy = sy;
           continue;
@@ -260,7 +261,7 @@ export function parseAscii(text: string): Shape[] {
           const options: [number, number][] = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
           const turn = options.find(([px, py]) => {
             const nc = at(cx + px, cy + py);
-            return free(cx + px, cy + py) && (nc === lineOf([px, py]) || nc === '+');
+            return free(cx + px, cy + py) && (isLine(nc, [px, py]) || nc === '+');
           });
           if (!turn) break;
           dir = turn;
@@ -277,8 +278,8 @@ export function parseAscii(text: string): Shape[] {
       for (let i = 0; i < maxGap; i++) {
         const gx = cx + dir[0] * i, gy = cy + dir[1] * i;
         const gc = at(gx, gy);
-        if (i > 0 && (gc === lineOf(dir) || gc === '+') && free(gx, gy)) { resume = i; break; }
-        if (gc === '-' || gc === '|' || gc === '+' || gc in HEAD_DIR) { blocked = true; break; }
+        if (i > 0 && (isLine(gc, dir) || gc === '+') && free(gx, gy)) { resume = i; break; }
+        if (gc === '-' || gc === '|' || gc === ':' || gc === '+' || gc in HEAD_DIR) { blocked = true; break; }
         gap.push([gx, gy]);
       }
       if (blocked || resume < 0) break;
@@ -294,7 +295,7 @@ export function parseAscii(text: string): Shape[] {
         // crossing our column — capture that run as the arrow's label.
         for (const [gx, gy] of gap) {
           if (at(gx, gy) === ' ') continue;
-          const stopChar = (c: string) => c === '-' || c === '|' || c === '+' || c === '=';
+          const stopChar = (c: string) => c === '-' || c === '|' || c === ':' || c === '+' || c === '=';
           let lo = gx, hi = gx;
           while (free(lo - 1, gy) && !stopChar(at(lo - 1, gy)) &&
                  !(at(lo - 1, gy) === ' ' && at(lo - 2, gy) === ' ')) lo--;
@@ -324,7 +325,8 @@ export function parseAscii(text: string): Shape[] {
     const a: ArrowShape = { type: 'arrow', id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
     if (label) a.text = label;
     if (dual) a.heads = 'both';
-    if (singleGaps >= 2 && singleGaps * 4 >= cells.length) a.style = 'dashed';
+    const dotted = cells.some(([x, y]) => at(x, y) === ':');
+    if (dotted || (singleGaps >= 2 && singleGaps * 4 >= cells.length)) a.style = 'dashed';
     return a;
   }
 

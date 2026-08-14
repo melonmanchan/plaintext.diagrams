@@ -22,28 +22,28 @@ describe('group frames', () => {
       arrow(4, { box1: 2, box2: 3 }),
     ];
     expect(exportAscii(shapes)).toBe([
-      '+=========+',
-      '| Backend |',
-      '+=========+==================+',
-      '|                            |',
-      '|  +-------+     +-------+   |',
-      '|  |  API  |---->|  DB   |   |',
-      '|  +-------+     +-------+   |',
-      '|                            |',
-      '+============================+',
+      '╔═════════╗',
+      '║ Backend ║',
+      '╠═════════╩══════════════════╗',
+      '║                            ║',
+      '║  ┌───────┐     ┌───────┐   ║',
+      '║  │  API  │────▶│  DB   │   ║',
+      '║  └───────┘     └───────┘   ║',
+      '║                            ║',
+      '╚════════════════════════════╝',
     ].join('\n'));
   });
 
   it('renders an untitled group as a plain frame', () => {
     expect(exportAscii([group(1, 0, 0, 10, 3)])).toBe([
-      '+========+',
-      '|        |',
-      '+========+',
+      '╔════════╗',
+      '║        ║',
+      '╚════════╝',
     ].join('\n'));
   });
 
   it('uses double-line unicode characters with tab junctions', () => {
-    const out = exportAscii([group(1, 0, 0, 12, 5, 'G')], true);
+    const out = exportAscii([group(1, 0, 0, 12, 5, 'G')]);
     expect(out).toContain('╔═══╗');
     expect(out).toContain('║ G ║');
     expect(out).toContain('╠═══╩══════╗');
@@ -72,13 +72,13 @@ describe('group frames', () => {
       group(1, 0, 0, 30, 9, 'Backend'),
       box(2, 3, 4, 9, 3, 'API'),
     ];
-    const uni = exportAscii(shapes, true);
+    const uni = exportAscii(shapes);
     const reparsed = parseAscii(uni);
     const g = reparsed.find((s): s is GroupShape => s.type === 'group');
     expect(g).toBeDefined();
     expect(g!.text).toBe('Backend');
     expect(reparsed.filter((s) => s.type === 'text')).toHaveLength(0);
-    expect(exportAscii(reparsed, true)).toBe(uni);
+    expect(exportAscii(reparsed)).toBe(uni);
   });
 
   it('recovers labels overlaid on vertical arrows', () => {

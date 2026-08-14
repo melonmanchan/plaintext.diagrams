@@ -24,6 +24,10 @@ export function rasterize(shapes: Shape[], cols = COLS, rows = ROWS): Raster {
       if ((c === '-' && ch[i] === '|') || (c === '|' && ch[i] === '-')) {
         ch[i] = '+'; id[i] = sid; return;
       }
+      // dashed vertical over solid horizontal (or vice versa) also junctions
+      if ((c === ':' && ch[i] === '-') || (c === '-' && ch[i] === ':')) {
+        ch[i] = '+'; id[i] = sid; return;
+      }
     }
     if (p >= pri[i]) { ch[i] = c; id[i] = sid; pri[i] = p; }
   };
@@ -160,10 +164,12 @@ function drawArrow(
     put(pts[0].x, pts[0].y, '>', s.id, PRI.head);
     return;
   }
-  // Dashed arrows drop every other cell visually; skipped cells still get
-  // a hit-test ghost id so the arrow stays clickable along its whole run.
-  // Cells over existing content (borders, lines) are always drawn so
-  // crossings stay continuous and parseable; so are cells near bends.
+  // Dashed arrows: horizontal runs drop every other cell visually; skipped
+  // cells still get a hit-test ghost id so the arrow stays clickable along
+  // its whole run. Cells over existing content (borders, lines) are always
+  // drawn so crossings stay continuous and parseable; so are cells near
+  // bends. Vertical runs use a dotted glyph (':' → '┊') on every cell
+  // instead — row-gapping reads solid at 2:1 cell aspect.
   const dashed = s.style === 'dashed';
   const putL = (x: number, y: number, c: string, force: boolean) => {
     if (!dashed || force || (x + y) % 2 === 0 || busy(x, y)) put(x, y, c, s.id, PRI.line);
@@ -176,7 +182,8 @@ function drawArrow(
       for (let x = lo; x <= hi; x++) putL(x, a.y, '-', x <= lo + 1 || x >= hi - 1);
     } else {
       const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
-      for (let y = lo; y <= hi; y++) putL(a.x, y, '|', y <= lo + 1 || y >= hi - 1);
+      for (let y = lo; y <= hi; y++)
+        put(a.x, y, dashed ? ':' : '|', s.id, PRI.line);
     }
   }
   for (let i = 1; i < pts.length - 1; i++)
@@ -236,7 +243,7 @@ export function stylize(r: Raster): string[] {
     }
     if (isLinePri(r.pri[i])) {
       const c = r.ch[i];
-      return c === '+' || c === (axis === 'h' ? '-' : '|');
+      return c === '+' || c === (axis === 'h' ? '-' : '|') || (axis === 'v' && c === ':');
     }
     return false;
   };
@@ -268,6 +275,7 @@ export function stylize(r: Raster): string[] {
       } else if (isLinePri(r.pri[i])) {
         if (c === '-') out[i] = '─';
         else if (c === '|') out[i] = '│';
+        else if (c === ':') out[i] = '┊';
         else if (c === '+') {
           const mask =
             (connects(x - 1, y, 'h') ? 1 : 0) |

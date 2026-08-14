@@ -13,12 +13,12 @@ const arrow = (id: number, over: Partial<ArrowShape>): ArrowShape =>
 describe('arrow head states', () => {
   it('renders heads on both ends', () => {
     expect(exportAscii([arrow(1, { x1: 0, y1: 0, x2: 8, y2: 0, heads: 'both' })]))
-      .toBe('<------->');
+      .toBe('◀───────▶');
   });
 
   it('renders a start-only head', () => {
     expect(exportAscii([arrow(1, { x1: 0, y1: 0, x2: 8, y2: 0, heads: 'start' })]))
-      .toBe('<--------');
+      .toBe('◀────────');
   });
 
 
@@ -36,8 +36,8 @@ describe('arrow head states', () => {
       arrow(3, { box1: 1, box2: 2, heads: 'both' }),
     ];
     const first = exportAscii(shapes);
-    expect(first).toContain('<');
-    expect(first).toContain('>');
+    expect(first).toContain('◀');
+    expect(first).toContain('▶');
     expect(exportAscii(parseAscii(first))).toBe(first);
   });
 });
@@ -52,7 +52,7 @@ describe('growing world', () => {
     const out = exportAscii(shapes);
     expect(out).toContain('Far');
     expect(out).toContain('Away');
-    expect(out).toContain('>');
+    expect(out).toContain('▶');
   });
 });
 
@@ -66,10 +66,10 @@ describe('parallel arrows between the same boxes', () => {
       arrow(5, { box1: 2, box2: 1 }),
     ];
     const out = exportAscii(shapes);
-    const arrowRows = out.split('\n').filter((l) => l.includes('>') || l.includes('<'));
+    const arrowRows = out.split('\n').filter((l) => l.includes('▶') || l.includes('◀'));
     expect(arrowRows).toHaveLength(3);
-    expect(out.match(/>/g)).toHaveLength(2);
-    expect(out.match(/</g)).toHaveLength(1);
+    expect(out.match(/▶/g)).toHaveLength(2);
+    expect(out.match(/◀/g)).toHaveLength(1);
   });
 
   it('overflows to top/bottom sides when the facing side is full', () => {
@@ -81,14 +81,14 @@ describe('parallel arrows between the same boxes', () => {
       arrow(5, { box1: 1, box2: 2, text: 'HTTP patch' }),
     ];
     expect(exportAscii(shapes)).toBe([
-      '+----------+',
-      '|          |-------------- http POST -------------v',
-      '|          |                                    +-------------------+',
-      '|  Client  |----------------------------------->|      Server       |',
-      '|          |                                    +-------------------+',
-      '|          |------------- HTTP patch -------------^',
-      '|          |',
-      '+----------+',
+      '┌──────────┐',
+      '│          │────────────── http POST ─────────────▼',
+      '│          │                                    ┌───────────────────┐',
+      '│  Client  │───────────────────────────────────▶│      Server       │',
+      '│          │                                    └───────────────────┘',
+      '│          │───────────── HTTP patch ─────────────▲',
+      '│          │',
+      '└──────────┘',
     ].join('\n'));
   });
 });
@@ -100,7 +100,7 @@ describe('unicode style', () => {
       arrow(2, { x1: 0, y1: 5, x2: 10, y2: 5 }),
       arrow(3, { x1: 8, y1: 2, x2: 8, y2: 8 }),
     ];
-    const out = exportAscii(shapes, true);
+    const out = exportAscii(shapes);
     expect(out).toContain('┌────┐');
     expect(out).toContain('└────┘');
     expect(out).toContain('│ ab │');
@@ -115,9 +115,9 @@ describe('unicode style', () => {
       box(2, 20, 0, 10, 4, 'Peer'),
       arrow(3, { box1: 1, box2: 2 }),
     ];
-    const uni = exportAscii(shapes, true);
+    const uni = exportAscii(shapes);
     const reparsed = parseAscii(uni);
-    expect(exportAscii(reparsed, true)).toBe(uni);
+    expect(exportAscii(reparsed)).toBe(uni);
   });
 });
 

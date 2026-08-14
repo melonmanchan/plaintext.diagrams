@@ -137,7 +137,7 @@ function flash(btn: HTMLButtonElement, label: string): void {
 
 /** Primary export: straight to clipboard. Shift+click previews in the modal. */
 async function exportToClipboard(): Promise<void> {
-  const text = exportAscii(app.doc.shapes, app.unicode);
+  const text = exportAscii(app.doc.shapes);
   if (!text) {
     flash($('#export'), 'Canvas empty');
     return;
@@ -147,7 +147,7 @@ async function exportToClipboard(): Promise<void> {
 }
 
 function openExport(): void {
-  const text = exportAscii(app.doc.shapes, app.unicode);
+  const text = exportAscii(app.doc.shapes);
   const out = $<HTMLTextAreaElement>('#out');
   out.value = text;
   const lines = text ? text.split('\n') : [];
@@ -182,12 +182,6 @@ export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
   stage.scrollLeft = wx * z - sx;
   stage.scrollTop = wy * z - sy;
   $('#zoom-reset').textContent = Math.round(z * 100) + '%';
-}
-
-function syncStyleButton(): void {
-  const b = $('#style');
-  b.textContent = app.unicode ? '┌─' : '+-';
-  b.classList.toggle('active', app.unicode);
 }
 
 /* ---------- paste: ASCII → shapes ---------- */
@@ -295,7 +289,7 @@ function onKeyDown(e: KeyboardEvent): void {
     if (!app.selection.size) return; // let the browser handle plain copy
     e.preventDefault();
     const picked = app.doc.shapes.filter((s) => app.selection.has(s.id));
-    const text = exportAscii(picked, app.unicode);
+    const text = exportAscii(picked);
     if (text) {
       void copyText(text);
       flash($('#export'), 'Copied selection ✓');
@@ -372,13 +366,6 @@ export function initUi(): void {
   $('#zoom-in').addEventListener('click', () => setZoom(app.zoom * 1.25));
   $('#zoom-out').addEventListener('click', () => setZoom(app.zoom / 1.25));
   $('#zoom-reset').addEventListener('click', () => setZoom(1));
-  $('#style').addEventListener('click', () => {
-    app.unicode = !app.unicode;
-    try { localStorage.setItem('vibedraw:style', app.unicode ? 'unicode' : 'ascii'); } catch { /* ignore */ }
-    syncStyleButton();
-    render();
-  });
-  syncStyleButton();
   $('#stage').addEventListener('wheel', (e) => {
     if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps panning
     e.preventDefault();
