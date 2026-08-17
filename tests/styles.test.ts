@@ -170,4 +170,20 @@ describe('labels containing structural glyphs', () => {
     expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
     expect(exportAscii(re)).toBe(first);
   });
+
+  it('captures multi-word, hyphenated, and short-run labels', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 20, 5, 'W'), box(2, 0, 12, 20, 5, 'X'),
+      box(3, 40, 0, 20, 5, 'Y'), box(4, 40, 12, 20, 4, 'Z'),
+      arrow(5, { box1: 1, box2: 2, text: 'open app' }),   // word gap on the line column
+      arrow(6, { box1: 1, box2: 3, text: 'vibe-code' }),  // hyphen mid horizontal run
+      arrow(7, { box1: 3, box2: 4, text: 'commit' }),     // short run ending at a border
+    ];
+    const first = exportAscii(shapes);
+    const re = parseAscii(first);
+    const labels = re.filter((s): s is ArrowShape => s.type === 'arrow').map((a) => a.text).sort();
+    expect(labels).toEqual(['commit', 'open app', 'vibe-code']);
+    expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
+    expect(exportAscii(re)).toBe(first);
+  });
 });

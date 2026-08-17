@@ -37,6 +37,16 @@ function fitBoxToLabel(s) {
   if (s.h < minH)
     s.h = Math.min(minH, MAX_ROWS - s.y);
 }
+function groupMinSize(s) {
+  const tab = s.text ? 2 : 0;
+  const n = s.lanes?.length ?? 0;
+  if (n >= 2)
+    return [Math.max(4, n * 6), tab + 5];
+  if (!s.text)
+    return [4, 3];
+  return [Math.max(4, s.text.split(`
+`)[0].length + 4), 5];
+}
 function laneBounds(g) {
   const n = g.lanes?.length ?? 0;
   if (n < 2)
@@ -586,487 +596,104 @@ function exportAscii(shapes) {
 `);
 }
 
-// src/import.ts
-var HEAD_DIR = {
-  ">": [1, 0],
-  "<": [-1, 0],
-  v: [0, 1],
-  "^": [0, -1]
-};
-var UNI_TO_ASCII = {
-  "─": "-",
-  "│": "|",
-  "┊": ":",
-  "╎": ":",
-  "┌": "+",
-  "┐": "+",
-  "└": "+",
-  "┘": "+",
-  "├": "+",
-  "┤": "+",
-  "┬": "+",
-  "┴": "+",
-  "┼": "+",
-  "═": "=",
-  "║": "|",
-  "╔": "+",
-  "╗": "+",
-  "╚": "+",
-  "╝": "+",
-  "╠": "+",
-  "╣": "+",
-  "╦": "+",
-  "╩": "+",
-  "╬": "+",
-  "╭": ".",
-  "╮": ".",
-  "╰": "'",
-  "╯": "'",
-  "▶": ">",
-  "►": ">",
-  "◀": "<",
-  "◄": "<",
-  "▼": "v",
-  "▲": "^"
-};
-function parseAscii(text) {
-  const normalized = text.replace(/[─│┊╎┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯▶►◀◄▼▲]/g, (c) => UNI_TO_ASCII[c]);
-  const lines = normalized.replace(/\r\n?/g, `
-`).split(`
-`).map((l) => l.replace(/\s+$/, ""));
-  const H = lines.length;
-  const at = (x, y) => y >= 0 && y < H && x >= 0 && x < lines[y].length ? lines[y][x] : " ";
-  const consumed = new Set;
-  const free = (x, y) => !consumed.has(y * 1e5 + x);
-  const take = (x, y) => consumed.add(y * 1e5 + x);
-  const isH = (c) => c === "-" || c === "+";
-  const isV = (c) => c === "|" || c === "+";
+// src/interop.ts
+var SHAPE_TYPES = { box: true, arrow: true, text: true, group: true };
+function parseShapesJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("["))
+    return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (e) {
+    return { shapes: [], errors: ["invalid JSON: " + String(e)] };
+  }
+  const list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && ("shapes" in parsed) && Array.isArray(parsed.shapes) ? parsed.shapes : null;
+  if (!list)
+    return { shapes: [], errors: ['expected a shape array or { "shapes": [...] }'] };
+  const errors = [];
+  const shapes = list.map((s) => ({ ...s }));
+  const num = (v) => typeof v === "number" && Number.isFinite(v);
+  const ids = new Set;
   let seq = 1;
-  const groups = [];
-  const boxes = [];
-  const arrows = [];
-  const texts = [];
-  const sideOk = (c) => isV(c) || c === "-";
-  const takeSide = (x, y) => {
-    const c = at(x, y);
-    if (c !== "-" && c !== " ")
-      take(x, y);
-  };
-  const takeEdge = (x, y) => {
-    const c = at(x, y);
-    if (c !== "|" && c !== " ")
-      take(x, y);
-  };
-  function rectBottom(x1, x2, y1, horiz, corner) {
-    if (x2 - x1 < 2)
-      return null;
-    const edgeOk = (c) => horiz(c) || c === "|";
-    for (let y2 = y1 + 1;y2 <= H; y2++) {
-      const cl = at(x1, y2), cr = at(x2, y2);
-      if (!(sideOk(cl) || cl === corner) || !(sideOk(cr) || cr === corner))
-        return null;
-      if (cl !== corner || cr !== corner || y2 - y1 < 2)
-        continue;
-      let ok = true, underline = false;
-      for (let i = x1 + 1;i < x2 && ok; i++) {
-        const c = at(i, y2);
-        if (!edgeOk(c))
-          ok = false;
-        else if (c === "+" && at(i, y2 + 1) === "|")
-          underline = true;
-      }
-      if (!ok || underline)
-        continue;
-      for (let i = x1;i <= x2; i++) {
-        takeEdge(i, y1);
-        takeEdge(i, y2);
-      }
-      for (let j = y1;j <= y2; j++) {
-        takeSide(x1, j);
-        takeSide(x2, j);
-      }
-      return y2;
-    }
-    return null;
-  }
-  const isHG = (c) => c === "=" || c === "+";
-  const topOk = (h) => (c) => h(c) || c === "|";
-  function groupAt(x, y) {
-    const hgTop = topOk(isHG);
-    for (let x2 = x + 1;hgTop(at(x2, y)); x2++) {
-      if (at(x2, y) !== "+" || isHG(at(x2 + 1, y)))
-        continue;
-      if (!lines[y].slice(x + 1, x2).includes("="))
-        continue;
-      const tabRow = y + 2;
-      const isTab = at(x, tabRow) === "+" && at(x2, tabRow) === "+" && sideOk(at(x, y + 1)) && sideOk(at(x2, y + 1)) && at(x2 + 1, tabRow) === "=";
-      if (isTab) {
-        for (let xr = x2 + 1;hgTop(at(xr, tabRow)); xr++) {
-          if (at(xr, tabRow) !== "+" || isHG(at(xr + 1, tabRow)))
-            continue;
-          const yBot2 = rectBottom(x, xr, tabRow, isHG, "+");
-          if (yBot2 == null)
-            continue;
-          for (let i = x;i <= x2; i++)
-            takeEdge(i, y);
-          takeSide(x, y + 1);
-          takeSide(x2, y + 1);
-          let title = "";
-          for (let i = x + 2;i <= x2 - 2; i++) {
-            title += free(i, y + 1) ? at(i, y + 1) : " ";
-            take(i, y + 1);
-          }
-          return { type: "group", id: seq++, x, y, w: xr - x + 1, h: yBot2 - y + 1, text: title.trim() };
-        }
-        return null;
-      }
-      const yBot = rectBottom(x, x2, y, isHG, "+");
-      if (yBot != null) {
-        return { type: "group", id: seq++, x, y, w: x2 - x + 1, h: yBot - y + 1, text: "" };
-      }
-    }
-    return null;
-  }
-  function detectLanes(g) {
-    const top = g.text && g.h >= 5 ? g.y + 2 : g.y;
-    const u = top + 2;
-    if (g.y + g.h - 1 - top < 4)
-      return;
-    if (at(g.x, u) !== "+" || at(g.x + g.w - 1, u) !== "+")
-      return;
-    let isU = true;
-    const bounds = [];
-    for (let i = g.x + 1;i < g.x + g.w - 1 && isU; i++) {
-      const c = at(i, u);
-      if (c === "+" && at(i, u + 1) === "|")
-        bounds.push(i);
-      else if (!isHG(c) && c !== "|")
-        isU = false;
-    }
-    if (!isU || !bounds.length)
-      return;
-    if (!bounds.every((bx) => at(bx, top) === "+" && at(bx, g.y + g.h - 1) === "+"))
-      return;
-    for (let i = g.x + 1;i < g.x + g.w - 1; i++) {
-      const c = at(i, u);
-      if (c === "=" || c === "+")
-        take(i, u);
-    }
-    for (const bx of bounds) {
-      for (let j = top + 1;j < g.y + g.h - 1; j++) {
-        if (at(bx, j) === "|")
-          take(bx, j);
-      }
-    }
-    const edges = [g.x, ...bounds, g.x + g.w - 1];
-    const lanes = [];
-    for (let li = 0;li + 1 < edges.length; li++) {
-      let t = "";
-      for (let i = edges[li] + 1;i < edges[li + 1]; i++) {
-        t += free(i, top + 1) ? at(i, top + 1) : " ";
-        if (free(i, top + 1) && at(i, top + 1) !== " ")
-          take(i, top + 1);
-      }
-      lanes.push(t.trim());
-    }
-    g.lanes = lanes;
-  }
-  for (let y = 0;y < H; y++) {
-    for (let x = 0;x < lines[y].length; x++) {
-      if (at(x, y) !== "+" || !free(x, y))
-        continue;
-      const g = groupAt(x, y);
-      if (g) {
-        detectLanes(g);
-        groups.push(g);
-      }
-    }
-  }
-  for (let y = 0;y < H; y++) {
-    for (let x = 0;x < lines[y].length; x++) {
-      const c0 = at(x, y);
-      if (c0 !== "+" && c0 !== "." || !free(x, y))
-        continue;
-      const round = c0 === ".";
-      const tr = round ? "." : "+";
-      const hTop = topOk(isH);
-      for (let x2 = x + 1;hTop(at(x2, y)) || at(x2, y) === tr; x2++) {
-        if (at(x2, y) !== tr)
-          continue;
-        const yBot = rectBottom(x, x2, y, isH, round ? "'" : "+");
-        if (yBot != null) {
-          const b = { type: "box", id: seq++, x, y, w: x2 - x + 1, h: yBot - y + 1, text: "" };
-          if (round)
-            b.style = "round";
-          boxes.push(b);
-          break;
-        }
-      }
-    }
-  }
-  function attachedBox(px, py) {
-    const b = boxes.find((o) => px >= o.x - 1 && px < o.x + o.w + 1 && py >= o.y - 1 && py < o.y + o.h + 1);
-    return b ? b.id : null;
-  }
-  function traceArrow(hx, hy, head) {
-    const isLine = (c, v) => v[1] === 0 ? c === "-" : c === "|" || c === ":";
-    const back = [-head[0], -head[1]];
-    const probes = [
-      back,
-      ...head[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]]
-    ];
-    let dir = back;
-    for (const p of probes) {
-      const c1 = at(hx + p[0], hy + p[1]);
-      if (free(hx + p[0], hy + p[1]) && (isLine(c1, p) || c1 === "+")) {
-        dir = p;
-        break;
-      }
-      const c2 = at(hx + p[0] * 2, hy + p[1] * 2);
-      if (c1 === " " && free(hx + p[0] * 2, hy + p[1] * 2) && isLine(c2, p)) {
-        dir = p;
-        break;
-      }
-    }
-    const cells = [[hx, hy]];
-    const labelCells = [];
-    let label = "";
-    let dual = false;
-    let singleGaps = 0;
-    let cx = hx + dir[0], cy = hy + dir[1];
-    const railEndsAtHead = (jx, jy, d0) => {
-      let x = jx, y = jy;
-      let d = d0;
-      for (let k = 0;k < 512; k++) {
-        x += d[0];
-        y += d[1];
-        const c = at(x, y);
-        if (c in HEAD_DIR)
-          return true;
-        if (isLine(c, d))
-          continue;
-        if (c !== "+")
-          return false;
-        const s2 = at(x + d[0], y + d[1]);
-        if (isLine(s2, d) || s2 === "+" || s2 in HEAD_DIR)
-          continue;
-        const pp = d[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
-        const opts = pp.filter(([px, py]) => {
-          const c2 = at(x + px, y + py);
-          return isLine(c2, [px, py]) || c2 === "+" || c2 in HEAD_DIR;
-        });
-        if (opts.length !== 1)
-          return false;
-        d = opts[0];
-      }
-      return false;
-    };
-    for (;; ) {
-      if (cells.length > 4096)
-        break;
-      const ch = at(cx, cy);
-      if (isLine(ch, dir)) {
-        cells.push([cx, cy]);
-        cx += dir[0];
-        cy += dir[1];
-        continue;
-      }
-      if (free(cx, cy) && ch in HEAD_DIR && HEAD_DIR[ch][0] === dir[0] && HEAD_DIR[ch][1] === dir[1]) {
-        cells.push([cx, cy]);
-        dual = true;
-        break;
-      }
-      const perp = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
-      const perpLine = perp.some(([px, py]) => {
-        const pc = at(cx + px, cy + py);
-        return isLine(pc, [px, py]) || pc === "+" || pc in HEAD_DIR;
-      });
-      if (ch === "+" && perpLine) {
-        const sx = cx + dir[0], sy = cy + dir[1];
-        const straightOk = isLine(at(sx, sy), dir);
-        const options = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
-        const turns = options.filter(([px, py]) => {
-          const nc = at(cx + px, cy + py);
-          return free(cx + px, cy + py) && (isLine(nc, [px, py]) || nc === "+");
-        });
-        if (straightOk && turns.length === 1 && railEndsAtHead(cx, cy, dir)) {
-          if (free(cx, cy))
-            cells.push([cx, cy]);
-          dir = turns[0];
-          cx += dir[0];
-          cy += dir[1];
-          continue;
-        }
-        if (straightOk) {
-          if (free(cx, cy))
-            cells.push([cx, cy]);
-          cx = sx;
-          cy = sy;
-          continue;
-        }
-        if (free(cx, cy) && turns.length) {
-          cells.push([cx, cy]);
-          dir = turns[0];
-          cx += dir[0];
-          cy += dir[1];
-          continue;
-        }
-        break;
-      }
-      const maxGap = dir[1] === 0 ? 40 : 4;
-      let resume = -1;
-      let blocked = false;
-      const gap = [];
-      const contin = (x, y) => {
-        const c = at(x, y);
-        return isLine(c, dir) || c === "+" || c in HEAD_DIR;
-      };
-      for (let i = 0;i < maxGap; i++) {
-        const gx = cx + dir[0] * i, gy = cy + dir[1] * i;
-        const gc = at(gx, gy);
-        const nx = gx + dir[0], ny = gy + dir[1];
-        const continues = contin(nx, ny) || at(nx, ny) === " " && contin(nx + dir[0], ny + dir[1]);
-        if (i > 0 && (isLine(gc, dir) || gc === "+") && free(gx, gy) && continues) {
-          resume = i;
-          break;
-        }
-        if ((gc === "-" || gc === "|" || gc === ":" || gc === "+" || (gc in HEAD_DIR)) && !continues) {
-          blocked = true;
-          break;
-        }
-        gap.push([gx, gy]);
-      }
-      if (blocked || resume < 0)
-        break;
-      if (resume === 1 && gap.length === 1 && at(gap[0][0], gap[0][1]) === " ")
-        singleGaps++;
-      if (dir[1] === 0) {
-        const chars = gap.map(([gx, gy]) => at(gx, gy));
-        if (dir[0] < 0)
-          chars.reverse();
-        const s = chars.join("").trim();
-        if (s && !label)
-          label = s;
-        labelCells.push(...gap);
-      } else {
-        for (const [gx, gy] of gap) {
-          if (at(gx, gy) === " " || !free(gx, gy))
-            continue;
-          const stopChar = (x) => {
-            const c = at(x, gy);
-            if (c === "|" || c === ":" || c === "=")
-              return true;
-            if (c !== "-" && c !== "+" && !(c in HEAD_DIR))
-              return false;
-            const l = at(x - 1, gy), r = at(x + 1, gy);
-            return l === "-" || r === "-" || l === "+" || r === "+" || l === " " && r === " ";
-          };
-          let lo = gx, hi = gx;
-          while (free(lo - 1, gy) && !stopChar(lo - 1) && !(at(lo - 1, gy) === " " && at(lo - 2, gy) === " "))
-            lo--;
-          while (free(hi + 1, gy) && !stopChar(hi + 1) && !(at(hi + 1, gy) === " " && at(hi + 2, gy) === " "))
-            hi++;
-          const s = lines[gy].slice(lo, hi + 1).trim();
-          if (s && !label) {
-            label = s;
-            for (let i = lo;i <= hi; i++)
-              labelCells.push([i, gy]);
-          }
-        }
-      }
-      cx += dir[0] * resume;
-      cy += dir[1] * resume;
-    }
-    if (cells.length < 2)
-      return null;
-    for (const [px, py] of cells)
-      take(px, py);
-    for (const [px, py] of labelCells)
-      if (at(px, py) !== " ")
-        take(px, py);
-    for (const [px, py] of labelCells)
-      take(px, py);
-    const [tx, ty] = cells[cells.length - 1];
-    const box2 = attachedBox(hx, hy);
-    let box1 = attachedBox(tx, ty);
-    if (box1 != null && box1 === box2)
-      box1 = null;
-    const a = { type: "arrow", id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
-    if (label)
-      a.text = label;
-    if (dual)
-      a.heads = "both";
-    const dotted = cells.some(([x, y]) => at(x, y) === ":");
-    if (dotted || singleGaps >= 2 && singleGaps * 4 >= cells.length)
-      a.style = "dashed";
-    return a;
-  }
-  for (let y = 0;y < H; y++) {
-    for (let x = 0;x < lines[y].length; x++) {
-      const c = at(x, y);
-      if (!(c in HEAD_DIR) || !free(x, y))
-        continue;
-      const hd = HEAD_DIR[c];
-      const axisLine = (ch) => hd[1] === 0 ? ch === "-" : ch === "|" || ch === ":";
-      const fw = at(x + hd[0], y + hd[1]);
-      const bk = at(x - hd[0], y - hd[1]);
-      if (axisLine(fw) && (axisLine(bk) || bk === "+"))
-        continue;
-      const a = traceArrow(x, y, HEAD_DIR[c]);
-      if (a)
-        arrows.push(a);
-    }
-  }
-  for (const b of boxes) {
-    const overlapped = boxes.some((o) => o !== b && o.x < b.x + b.w - 1 && o.x + o.w > b.x + 1 && o.y < b.y + b.h - 1 && o.y + o.h > b.y + 1);
-    if (overlapped)
+  for (const s of shapes) {
+    if (!s || typeof s !== "object" || !Object.hasOwn(SHAPE_TYPES, s.type)) {
+      errors.push(`unknown shape: ${JSON.stringify(s).slice(0, 80)}`);
       continue;
-    const rows = [];
-    for (let j = b.y + 1;j < b.y + b.h - 1; j++) {
-      let row = "";
-      for (let i = b.x + 1;i < b.x + b.w - 1; i++) {
-        row += free(i, j) ? at(i, j) : " ";
-        if (free(i, j) && at(i, j) !== " ")
-          take(i, j);
-      }
-      rows.push(row.trim());
     }
-    while (rows.length && !rows[0])
-      rows.shift();
-    while (rows.length && !rows[rows.length - 1])
-      rows.pop();
-    b.text = rows.join(`
-`);
+    if (typeof s.id === "number") {
+      if (ids.has(s.id))
+        errors.push(`duplicate shape id ${s.id}`);
+      ids.add(s.id);
+    }
   }
-  for (let y = 0;y < H; y++) {
-    const L = lines[y];
-    let x = 0;
-    while (x < L.length) {
-      if (at(x, y) === " " || !free(x, y)) {
-        x++;
+  for (const s of shapes) {
+    if (typeof s.id !== "number") {
+      while (ids.has(seq))
+        seq++;
+      s.id = seq;
+      ids.add(seq);
+    }
+  }
+  for (const s of shapes) {
+    if (!Object.hasOwn(SHAPE_TYPES, s.type))
+      continue;
+    if (s.text != null && typeof s.text !== "string") {
+      errors.push(`${s.type} ${s.id}: "text" must be a string`);
+      continue;
+    }
+    if (s.type === "arrow") {
+      const a = s;
+      if (![a.x1, a.y1, a.x2, a.y2].every((v) => v == null || num(v))) {
+        errors.push(`arrow ${a.id}: x1,y1,x2,y2 must be numbers`);
         continue;
       }
-      let end = x;
-      let i = x;
-      while (i < L.length && free(i, y)) {
-        if (at(i, y) !== " ") {
-          end = i;
-          i++;
-          continue;
-        }
-        if (i + 1 < L.length && at(i + 1, y) !== " " && free(i + 1, y)) {
-          i++;
-          continue;
-        }
-        break;
+      a.x1 = clamp(Math.round(a.x1 ?? 0), 0, MAX_COLS - 1);
+      a.x2 = clamp(Math.round(a.x2 ?? 0), 0, MAX_COLS - 1);
+      a.y1 = clamp(Math.round(a.y1 ?? 0), 0, MAX_ROWS - 1);
+      a.y2 = clamp(Math.round(a.y2 ?? 0), 0, MAX_ROWS - 1);
+      a.box1 ??= null;
+      a.box2 ??= null;
+      for (const ref of [a.box1, a.box2]) {
+        if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
+          errors.push(`arrow ${a.id} references box id ${ref}, which does not exist`);
       }
-      texts.push({ type: "text", id: seq++, x, y, text: L.slice(x, end + 1) });
-      for (let j = x;j <= end; j++)
-        take(j, y);
-      x = end + 1;
+      if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
+        errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
+    } else {
+      const p = s;
+      if (!num(p.x ?? 0) || !num(p.y ?? 0)) {
+        errors.push(`${s.type} ${s.id}: "x" and "y" must be numbers`);
+        continue;
+      }
+      p.x = clamp(Math.round(p.x ?? 0), 0, MAX_COLS - 1);
+      p.y = clamp(Math.round(p.y ?? 0), 0, MAX_ROWS - 1);
+      if (s.type === "box" || s.type === "group") {
+        const b = s;
+        if (!num(b.w ?? 3) || !num(b.h ?? 3)) {
+          errors.push(`${s.type} ${b.id}: "w" and "h" must be numbers`);
+          continue;
+        }
+        b.w = clamp(Math.round(b.w ?? (s.type === "box" ? 3 : 4)), 1, MAX_COLS - b.x);
+        b.h = clamp(Math.round(b.h ?? 3), 1, MAX_ROWS - b.y);
+        if (s.type === "box") {
+          fitBoxToLabel(b);
+        } else {
+          const g = s;
+          if (g.lanes != null && !(Array.isArray(g.lanes) && g.lanes.every((l) => typeof l === "string"))) {
+            errors.push(`group ${g.id}: "lanes" must be an array of strings`);
+            continue;
+          }
+          const [minW, minH] = groupMinSize(g);
+          g.w = Math.min(Math.max(g.w, minW), MAX_COLS - g.x);
+          g.h = Math.min(Math.max(g.h, minH), MAX_ROWS - g.y);
+        }
+      } else if (typeof s.text !== "string" || !s.text) {
+        errors.push(`text shape ${s.id} needs a non-empty "text"`);
+      }
     }
   }
-  return [...groups, ...boxes, ...arrows, ...texts];
+  return { shapes: errors.length ? [] : shapes, errors };
 }
 
 // scripts/render-cli.ts
@@ -1079,94 +706,18 @@ var args = process.argv.slice(2);
 var check = args.includes("--check");
 var file = args.find((a) => a !== "--check");
 var raw = file ? readFileSync(file, "utf8") : readFileSync(0, "utf8");
-var parsed;
-try {
-  parsed = JSON.parse(raw);
-} catch (e) {
-  fail("input is not valid JSON: " + String(e));
-}
-var list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && ("shapes" in parsed) ? parsed.shapes : null;
-if (!Array.isArray(list))
-  fail('expected a JSON array of shapes, or { "shapes": [...] }');
-var shapes = list;
-var seq = 1;
-var ids = new Set;
-for (const s of shapes) {
-  if (!s || typeof s !== "object")
-    fail("shape is not an object: " + JSON.stringify(s));
-  if (!["box", "arrow", "text", "group"].includes(s.type))
-    fail(`unknown shape type "${String(s.type)}"`);
-  if (s.id == null)
-    s.id = -1;
-  else
-    ids.add(s.id);
-}
-for (const s of shapes) {
-  if (s.id === -1) {
-    while (ids.has(seq))
-      seq++;
-    s.id = seq;
-    ids.add(seq);
-  }
-}
-for (const s of shapes) {
-  if (s.type === "arrow") {
-    const a = s;
-    a.x1 ??= 0;
-    a.y1 ??= 0;
-    a.x2 ??= 0;
-    a.y2 ??= 0;
-    a.box1 ??= null;
-    a.box2 ??= null;
-    for (const ref of [a.box1, a.box2]) {
-      if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
-        fail(`arrow ${a.id} references box id ${ref}, which does not exist`);
-    }
-    if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
-      fail(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
-  } else if (s.type === "box") {
-    const b = s;
-    b.w ??= 3;
-    b.h ??= 3;
-    fitBoxToLabel(b);
-  } else if (s.type === "group") {
-    const g = s;
-    const [minW, minH] = [Math.max(4, (g.text ?? "").length + 4), g.text ? 5 : 3];
-    if ((g.w ?? 0) < minW)
-      g.w = minW;
-    if ((g.h ?? 0) < minH)
-      g.h = minH;
-  }
-}
+var parsed = parseShapesJson(raw);
+if (!parsed)
+  fail('input does not look like JSON — expected a shape array or { "shapes": [...] }');
+if (parsed.errors.length)
+  fail(parsed.errors.join(`
+`));
+var shapes = parsed.shapes;
 var out = exportAscii(shapes);
 if (!out)
   fail("diagram rendered empty — no shapes with geometry");
-if (check) {
-  const re = parseAscii(out);
-  const count = (ss, t) => ss.filter((x) => x.type === t).length;
-  const labels = (ss) => ss.filter((x) => x.type === "arrow").map((a) => a.text ?? null).filter(Boolean).sort();
-  const problems = [];
-  for (const t of ["box", "group", "arrow"])
-    if (count(shapes, t) !== count(re, t))
-      problems.push(`${t} count: drew ${count(shapes, t)}, re-imported ${count(re, t)}`);
-  const l1 = labels(shapes), l2 = labels(re);
-  if (JSON.stringify(l1) !== JSON.stringify(l2))
-    problems.push(`arrow labels: drew ${JSON.stringify(l1)}, re-imported ${JSON.stringify(l2)}`);
-  if (count(re, "text") > count(shapes, "text"))
-    problems.push(`${count(re, "text") - count(shapes, "text")} stray text fragment(s) — geometry collision likely`);
-  if (problems.length) {
-    process.stderr.write(`round-trip check FAILED:
-  ` + problems.join(`
-  `) + `
+if (check)
+  process.stderr.write(`JSON OK — ${shapes.length} shape(s)
 `);
-    process.stderr.write(`hint: shapes probably overlap — spread boxes further apart.
-`);
-    process.stdout.write(out + `
-`);
-    process.exit(1);
-  }
-  process.stderr.write(`round-trip check OK
-`);
-}
 process.stdout.write(out + `
 `);
