@@ -926,11 +926,13 @@ function parseAscii(text) {
         const gc = at(gx, gy);
         const nx = gx + dir[0], ny = gy + dir[1];
         const continues = contin(nx, ny) || at(nx, ny) === " " && contin(nx + dir[0], ny + dir[1]);
-        if (i > 0 && (isLine(gc, dir) || gc === "+") && free(gx, gy) && continues) {
+        const endsAtBorder = !free(nx, ny) && at(nx, ny) !== " ";
+        if (i > 0 && (isLine(gc, dir) || gc === "+") && free(gx, gy) && (continues || endsAtBorder)) {
           resume = i;
           break;
         }
-        if ((gc === "-" || gc === "|" || gc === ":" || gc === "+" || (gc in HEAD_DIR)) && !continues) {
+        const letterish = (c) => c !== " " && c !== "=" && c !== "-" && c !== "|" && c !== ":" && c !== "+" && !(c in HEAD_DIR);
+        if ((gc === "-" || gc === "|" || gc === ":" || gc === "+" || (gc in HEAD_DIR)) && !continues && !(letterish(at(gx - dir[0], gy - dir[1])) || letterish(at(nx, ny)))) {
           blocked = true;
           break;
         }
@@ -949,7 +951,8 @@ function parseAscii(text) {
           label = s;
         labelCells.push(...gap);
       } else {
-        for (const [gx, gy] of gap) {
+        for (const [gx0, gy] of gap) {
+          const gx = at(gx0, gy) !== " " ? gx0 : at(gx0 - 1, gy) !== " " ? gx0 - 1 : at(gx0 + 1, gy) !== " " ? gx0 + 1 : gx0;
           if (at(gx, gy) === " " || !free(gx, gy))
             continue;
           const stopChar = (x) => {
@@ -1011,6 +1014,9 @@ function parseAscii(text) {
       const fw = at(x + hd[0], y + hd[1]);
       const bk = at(x - hd[0], y - hd[1]);
       if (axisLine(fw) && (axisLine(bk) || bk === "+"))
+        continue;
+      const bk2 = at(x - hd[0] * 2, y - hd[1] * 2);
+      if (fw === " " && !axisLine(bk) && bk !== "+" && !(bk === " " && axisLine(bk2)))
         continue;
       const a = traceArrow(x, y, HEAD_DIR[c]);
       if (a)

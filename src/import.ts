@@ -331,9 +331,17 @@ export function parseAscii(text: string): Shape[] {
         // continues right after it (or after one dashed gap cell) — think
         // 'v' in "save", '-' in "auto-rollback", '+' in "poll+ETag".
         const continues = contin(nx, ny) || (at(nx, ny) === ' ' && contin(nx + dir[0], ny + dir[1]));
-        if (i > 0 && (isLine(gc, dir) || gc === '+') && free(gx, gy) && continues) { resume = i; break; }
+        // A run may also end right here — its last cell butts against
+        // already-consumed geometry (a box border): that resumes too.
+        const endsAtBorder = !free(nx, ny) && at(nx, ny) !== ' ';
+        if (i > 0 && (isLine(gc, dir) || gc === '+') && free(gx, gy) && (continues || endsAtBorder)) { resume = i; break; }
+        // Letter-flanked structural chars are words, not wiring — the
+        // hyphen in a horizontal "vibe-code" label.
+        const letterish = (c: string) =>
+          c !== ' ' && c !== '=' && c !== '-' && c !== '|' && c !== ':' && c !== '+' && !(c in HEAD_DIR);
         if ((gc === '-' || gc === '|' || gc === ':' || gc === '+' || gc in HEAD_DIR) &&
-            !continues) { blocked = true; break; }
+            !continues &&
+            !(letterish(at(gx - dir[0], gy - dir[1])) || letterish(at(nx, ny)))) { blocked = true; break; }
         gap.push([gx, gy]);
       }
       if (blocked || resume < 0) break;
@@ -347,7 +355,13 @@ export function parseAscii(text: string): Shape[] {
       } else {
         // Vertical line: a label overlays it as a horizontal text run
         // crossing our column — capture that run as the arrow's label.
-        for (const [gx, gy] of gap) {
+        for (const [gx0, gy] of gap) {
+          // A multi-word label can put its inner space exactly on our
+          // column — seed the capture from a lettered neighbor instead.
+          const gx = at(gx0, gy) !== ' ' ? gx0
+            : at(gx0 - 1, gy) !== ' ' ? gx0 - 1
+            : at(gx0 + 1, gy) !== ' ' ? gx0 + 1
+            : gx0;
           if (at(gx, gy) === ' ' || !free(gx, gy)) continue; // blank or another arrow's label
           // '|', ':', '=' always stop; '-'/'+'/head glyphs stop only in
           // structural company — between letters they're label content
@@ -405,6 +419,10 @@ export function parseAscii(text: string): Shape[] {
       const fw = at(x + hd[0], y + hd[1]);
       const bk = at(x - hd[0], y - hd[1]);
       if (axisLine(fw) && (axisLine(bk) || bk === '+')) continue;
+      // A head with nothing in front and no line-ish approach behind is a
+      // stray letter in free text ('v' in a horizontal "vibe-code" label).
+      const bk2 = at(x - hd[0] * 2, y - hd[1] * 2);
+      if (fw === ' ' && !axisLine(bk) && bk !== '+' && !(bk === ' ' && axisLine(bk2))) continue;
       const a = traceArrow(x, y, HEAD_DIR[c]);
       if (a) arrows.push(a);
     }
