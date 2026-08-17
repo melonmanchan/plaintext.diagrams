@@ -1,5 +1,5 @@
 import './style.css';
-import { LEGACY_KEY, STORE_INDEX } from './constants';
+import { LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
 import { exportAscii } from './export';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
@@ -19,6 +19,23 @@ function demo(): void {
     { type: 'arrow', id: uid(), x1: 0, y1: 0, x2: 0, y2: 0, box1: server.id, box2: db.id },
     { type: 'text', id: uid(), x: 6, y: 1, text: 'GET /index.html' },
   );
+}
+
+/** One-time storage migration from the previous release's key prefix. */
+function migrateLegacyStore(): void {
+  try {
+    if (localStorage.getItem(STORE_INDEX) || !localStorage.getItem(LEGACY_PREFIX + 'index')) return;
+    const moved: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(LEGACY_PREFIX)) moved.push(key);
+    }
+    for (const key of moved) {
+      const value = localStorage.getItem(key);
+      if (value != null) localStorage.setItem('ptd:' + key.slice(LEGACY_PREFIX.length), value);
+      localStorage.removeItem(key);
+    }
+  } catch { /* storage unavailable — start fresh */ }
 }
 
 function boot(): void {
@@ -50,6 +67,7 @@ function boot(): void {
 setupCanvas();
 initUi();
 initInteractions();
+migrateLegacyStore();
 boot();
 render();
 

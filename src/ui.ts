@@ -63,7 +63,7 @@ export function updateProjectBar(): void {
   }
   sel.value = app.currentProject;
   const name = app.projects.find((p) => p.id === app.currentProject)?.name || 'diagram';
-  document.title = name + ' — vibedraw';
+  document.title = name + ' — plaintext.diagrams';
 }
 
 export function switchProject(id: string): void {
@@ -105,7 +105,7 @@ function renameProject(): void {
 function deleteProject(): void {
   const p = app.projects.find((pr) => pr.id === app.currentProject);
   if (!p || !confirm(`Delete project "${p.name}" and its diagram?`)) return;
-  try { localStorage.removeItem('vibedraw:doc:' + p.id); } catch { /* ignore */ }
+  try { localStorage.removeItem('ptd:doc:' + p.id); } catch { /* ignore */ }
   dropHistory(p.id);
   app.projects = app.projects.filter((pr) => pr.id !== p.id);
   if (!app.projects.length) app.projects.push({ id: genId(), name: 'Untitled' });

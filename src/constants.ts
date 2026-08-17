@@ -4,8 +4,10 @@ export const MAX_COLS = 1000, MAX_ROWS = 500; // hard world cap
 export const GROW_MARGIN = 30;            // free cells kept beyond content
 export const FONT = '15px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
 
-export const STORE_INDEX = 'vibedraw:index';
-export const DOC_KEY = (id: string) => 'vibedraw:doc:' + id;
+export const STORE_INDEX = 'ptd:index';
+export const DOC_KEY = (id: string) => 'ptd:doc:' + id;
+/** Storage prefixes of earlier releases, oldest last; migrated at boot. */
+export const LEGACY_PREFIX = 'vibedraw:';
 export const LEGACY_KEY = 'asciidraw-v1';
 
 /** Raster layer priorities; higher wins per cell. */

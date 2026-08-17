@@ -77,7 +77,7 @@ export function save(): void {
   persistHistory();
 }
 
-const HIST_KEY = (id: string) => 'vibedraw:hist:' + id;
+const HIST_KEY = (id: string) => 'ptd:hist:' + id;
 
 function persistHistory(): void {
   const payload = (n: number) =>
