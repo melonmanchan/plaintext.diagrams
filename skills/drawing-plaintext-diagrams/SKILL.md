@@ -9,10 +9,11 @@ description: Use when creating or editing box-and-arrow diagrams as text — arc
 
 plaintext.diagrams (https://melonmanchan.github.io/plaintext.diagrams/) is a diagram editor whose file format IS the rendered Unicode text. It ALSO paste-imports **shapes JSON** directly — lossless, no grid geometry to get right. Describe shapes as JSON; never hand-draw the character grid.
 
-## Two delivery modes
+## What to deliver
 
-1. **Diagram for the app** (user will paste/edit it): deliver the **shapes JSON itself**. The editor detects JSON on paste (clipboard starting with `[` or `{`), validates it, and imports losslessly — invalid JSON shows the first error in the hint bar. Done; no tooling needed.
-2. **Diagram as text** (README, PR description, code comment): render the JSON to Unicode text with the bundled renderer and iterate until the round-trip check passes:
+**Default: deliver the shapes JSON itself.** The editor detects JSON on paste (clipboard starting with `[` or `{`), validates it, and imports losslessly — invalid JSON shows the first error in the hint bar. No tooling, no rendering step.
+
+**Render to text ONLY when the deliverable is the text itself** — a README, PR description, or code comment read outside the app — or when the user explicitly asks to see the rendered diagram. Then use the bundled renderer and iterate until the round-trip check passes:
 
 ```bash
 node render.mjs --check shapes.json > diagram.txt   # render.mjs sits next to this file; bun works too
