@@ -154,3 +154,20 @@ describe('swimlanes', () => {
     expect(b.y + b.h - 1).toBeLessThan(12);
   });
 });
+
+describe('labels containing structural glyphs', () => {
+  it('keeps v/-/+ label characters out of the line tracer', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 16, 3, 'A'), box(2, 0, 10, 16, 3, 'B'), box(3, 0, 22, 16, 4, 'C'),
+      arrow(4, { box1: 1, box2: 2, text: 'save' }),
+      arrow(5, { box1: 2, box2: 3, text: 'auto-rollback', style: 'dashed' }),
+    ];
+    const first = exportAscii(shapes);
+    const re = parseAscii(first);
+    const labels = re.filter((s): s is ArrowShape => s.type === 'arrow').map((a) => a.text).sort();
+    expect(labels).toEqual(['auto-rollback', 'save']);
+    expect(re.find((s): s is ArrowShape => s.type === 'arrow' && s.text === 'auto-rollback')?.style).toBe('dashed');
+    expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
+    expect(exportAscii(re)).toBe(first);
+  });
+});

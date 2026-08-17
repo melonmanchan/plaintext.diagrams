@@ -876,7 +876,12 @@ function parseAscii(text) {
         dual = true;
         break;
       }
-      if (ch === "+") {
+      const perp = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
+      const perpLine = perp.some(([px, py]) => {
+        const pc = at(cx + px, cy + py);
+        return isLine(pc, [px, py]) || pc === "+" || pc in HEAD_DIR;
+      });
+      if (ch === "+" && perpLine) {
         const sx = cx + dir[0], sy = cy + dir[1];
         const straightOk = isLine(at(sx, sy), dir);
         const options = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
@@ -912,14 +917,20 @@ function parseAscii(text) {
       let resume = -1;
       let blocked = false;
       const gap = [];
+      const contin = (x, y) => {
+        const c = at(x, y);
+        return isLine(c, dir) || c === "+" || c in HEAD_DIR;
+      };
       for (let i = 0;i < maxGap; i++) {
         const gx = cx + dir[0] * i, gy = cy + dir[1] * i;
         const gc = at(gx, gy);
-        if (i > 0 && (isLine(gc, dir) || gc === "+") && free(gx, gy)) {
+        const nx = gx + dir[0], ny = gy + dir[1];
+        const continues = contin(nx, ny) || at(nx, ny) === " " && contin(nx + dir[0], ny + dir[1]);
+        if (i > 0 && (isLine(gc, dir) || gc === "+") && free(gx, gy) && continues) {
           resume = i;
           break;
         }
-        if (gc === "-" || gc === "|" || gc === ":" || gc === "+" || gc in HEAD_DIR) {
+        if ((gc === "-" || gc === "|" || gc === ":" || gc === "+" || (gc in HEAD_DIR)) && !continues) {
           blocked = true;
           break;
         }
@@ -941,11 +952,19 @@ function parseAscii(text) {
         for (const [gx, gy] of gap) {
           if (at(gx, gy) === " " || !free(gx, gy))
             continue;
-          const stopChar = (c) => c === "-" || c === "|" || c === ":" || c === "+" || c === "=";
+          const stopChar = (x) => {
+            const c = at(x, gy);
+            if (c === "|" || c === ":" || c === "=")
+              return true;
+            if (c !== "-" && c !== "+" && !(c in HEAD_DIR))
+              return false;
+            const l = at(x - 1, gy), r = at(x + 1, gy);
+            return l === "-" || r === "-" || l === "+" || r === "+" || l === " " && r === " ";
+          };
           let lo = gx, hi = gx;
-          while (free(lo - 1, gy) && !stopChar(at(lo - 1, gy)) && !(at(lo - 1, gy) === " " && at(lo - 2, gy) === " "))
+          while (free(lo - 1, gy) && !stopChar(lo - 1) && !(at(lo - 1, gy) === " " && at(lo - 2, gy) === " "))
             lo--;
-          while (free(hi + 1, gy) && !stopChar(at(hi + 1, gy)) && !(at(hi + 1, gy) === " " && at(hi + 2, gy) === " "))
+          while (free(hi + 1, gy) && !stopChar(hi + 1) && !(at(hi + 1, gy) === " " && at(hi + 2, gy) === " "))
             hi++;
           const s = lines[gy].slice(lo, hi + 1).trim();
           if (s && !label) {
@@ -986,6 +1005,12 @@ function parseAscii(text) {
     for (let x = 0;x < lines[y].length; x++) {
       const c = at(x, y);
       if (!(c in HEAD_DIR) || !free(x, y))
+        continue;
+      const hd = HEAD_DIR[c];
+      const axisLine = (ch) => hd[1] === 0 ? ch === "-" : ch === "|" || ch === ":";
+      const fw = at(x + hd[0], y + hd[1]);
+      const bk = at(x - hd[0], y - hd[1]);
+      if (axisLine(fw) && (axisLine(bk) || bk === "+"))
         continue;
       const a = traceArrow(x, y, HEAD_DIR[c]);
       if (a)

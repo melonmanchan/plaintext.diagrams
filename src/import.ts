@@ -274,7 +274,14 @@ export function parseAscii(text: string): Shape[] {
         dual = true;
         break;
       }
-      if (ch === '+') {
+      // A '+' with no perpendicular line beside it can't be a junction —
+      // it's label text (e.g. "poll+ETag"); let the gap logic capture it.
+      const perp: [number, number][] = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
+      const perpLine = perp.some(([px, py]) => {
+        const pc = at(cx + px, cy + py);
+        return isLine(pc, [px, py]) || pc === '+' || pc in HEAD_DIR;
+      });
+      if (ch === '+' && perpLine) {
         const sx = cx + dir[0], sy = cy + dir[1];
         const straightOk = isLine(at(sx, sy), dir);
         const options: [number, number][] = dir[1] === 0 ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
@@ -311,11 +318,22 @@ export function parseAscii(text: string): Shape[] {
       let resume = -1;
       let blocked = false;
       const gap: [number, number][] = [];
+      /** Does the run plausibly continue at (x,y) — line, junction, or head? */
+      const contin = (x: number, y: number): boolean => {
+        const c = at(x, y);
+        return isLine(c, dir) || c === '+' || c in HEAD_DIR;
+      };
       for (let i = 0; i < maxGap; i++) {
         const gx = cx + dir[0] * i, gy = cy + dir[1] * i;
         const gc = at(gx, gy);
-        if (i > 0 && (isLine(gc, dir) || gc === '+') && free(gx, gy)) { resume = i; break; }
-        if (gc === '-' || gc === '|' || gc === ':' || gc === '+' || gc in HEAD_DIR) { blocked = true; break; }
+        const nx = gx + dir[0], ny = gy + dir[1];
+        // A structural-looking char counts as label content when our own run
+        // continues right after it (or after one dashed gap cell) — think
+        // 'v' in "save", '-' in "auto-rollback", '+' in "poll+ETag".
+        const continues = contin(nx, ny) || (at(nx, ny) === ' ' && contin(nx + dir[0], ny + dir[1]));
+        if (i > 0 && (isLine(gc, dir) || gc === '+') && free(gx, gy) && continues) { resume = i; break; }
+        if ((gc === '-' || gc === '|' || gc === ':' || gc === '+' || gc in HEAD_DIR) &&
+            !continues) { blocked = true; break; }
         gap.push([gx, gy]);
       }
       if (blocked || resume < 0) break;
@@ -331,11 +349,20 @@ export function parseAscii(text: string): Shape[] {
         // crossing our column — capture that run as the arrow's label.
         for (const [gx, gy] of gap) {
           if (at(gx, gy) === ' ' || !free(gx, gy)) continue; // blank or another arrow's label
-          const stopChar = (c: string) => c === '-' || c === '|' || c === ':' || c === '+' || c === '=';
+          // '|', ':', '=' always stop; '-'/'+'/head glyphs stop only in
+          // structural company — between letters they're label content
+          // (the hyphen in "auto-rollback").
+          const stopChar = (x: number) => {
+            const c = at(x, gy);
+            if (c === '|' || c === ':' || c === '=') return true;
+            if (c !== '-' && c !== '+' && !(c in HEAD_DIR)) return false;
+            const l = at(x - 1, gy), r = at(x + 1, gy);
+            return l === '-' || r === '-' || l === '+' || r === '+' || (l === ' ' && r === ' ');
+          };
           let lo = gx, hi = gx;
-          while (free(lo - 1, gy) && !stopChar(at(lo - 1, gy)) &&
+          while (free(lo - 1, gy) && !stopChar(lo - 1) &&
                  !(at(lo - 1, gy) === ' ' && at(lo - 2, gy) === ' ')) lo--;
-          while (free(hi + 1, gy) && !stopChar(at(hi + 1, gy)) &&
+          while (free(hi + 1, gy) && !stopChar(hi + 1) &&
                  !(at(hi + 1, gy) === ' ' && at(hi + 2, gy) === ' ')) hi++;
           const s = lines[gy].slice(lo, hi + 1).trim();
           if (s && !label) {
@@ -370,6 +397,14 @@ export function parseAscii(text: string): Shape[] {
     for (let x = 0; x < lines[y].length; x++) {
       const c = at(x, y);
       if (!(c in HEAD_DIR) || !free(x, y)) continue;
+      // A real head is a terminus. A head glyph with its own-axis line both
+      // behind AND in front is a letter overlaying a line (the 'v' in a
+      // "save" label) — not an arrowhead.
+      const hd = HEAD_DIR[c];
+      const axisLine = (ch: string) => (hd[1] === 0 ? ch === '-' : ch === '|' || ch === ':');
+      const fw = at(x + hd[0], y + hd[1]);
+      const bk = at(x - hd[0], y - hd[1]);
+      if (axisLine(fw) && (axisLine(bk) || bk === '+')) continue;
       const a = traceArrow(x, y, HEAD_DIR[c]);
       if (a) arrows.push(a);
     }
