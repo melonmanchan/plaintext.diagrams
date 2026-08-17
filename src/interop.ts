@@ -1,5 +1,7 @@
+import { MAX_COLS, MAX_ROWS } from './constants';
 import { fitBoxToLabel, groupMinSize } from './shapes';
 import type { ArrowShape, BoxShape, GroupShape, Shape, TextShape } from './types';
+import { clamp } from './util';
 
 /* ============================================================
  * Shapes JSON interop — the agent-facing intermediate format.
@@ -41,14 +43,18 @@ export function parseShapesJson(text: string): ParsedShapes | null {
   // Boundary cast: every field is validated/normalized below.
   const shapes = list.map((s) => ({ ...(s as Shape) }));
 
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
   const ids = new Set<number>();
   let seq = 1;
   for (const s of shapes) {
-    if (!s || typeof s !== 'object' || !SHAPE_TYPES[s.type]) {
+    if (!s || typeof s !== 'object' || !Object.hasOwn(SHAPE_TYPES, s.type)) {
       errors.push(`unknown shape: ${JSON.stringify(s).slice(0, 80)}`);
       continue;
     }
-    if (typeof s.id === 'number') ids.add(s.id);
+    if (typeof s.id === 'number') {
+      if (ids.has(s.id)) errors.push(`duplicate shape id ${s.id}`);
+      ids.add(s.id);
+    }
   }
   for (const s of shapes) {
     if (typeof s.id !== 'number') {
@@ -59,10 +65,21 @@ export function parseShapesJson(text: string): ParsedShapes | null {
   }
 
   for (const s of shapes) {
-    if (!SHAPE_TYPES[s.type]) continue;
+    if (!Object.hasOwn(SHAPE_TYPES, s.type)) continue;
+    if (s.text != null && typeof s.text !== 'string') {
+      errors.push(`${s.type} ${s.id}: "text" must be a string`);
+      continue;
+    }
     if (s.type === 'arrow') {
       const a = s as ArrowShape;
-      a.x1 ??= 0; a.y1 ??= 0; a.x2 ??= 0; a.y2 ??= 0;
+      if (![a.x1, a.y1, a.x2, a.y2].every((v) => v == null || num(v))) {
+        errors.push(`arrow ${a.id}: x1,y1,x2,y2 must be numbers`);
+        continue;
+      }
+      a.x1 = clamp(Math.round(a.x1 ?? 0), 0, MAX_COLS - 1);
+      a.x2 = clamp(Math.round(a.x2 ?? 0), 0, MAX_COLS - 1);
+      a.y1 = clamp(Math.round(a.y1 ?? 0), 0, MAX_ROWS - 1);
+      a.y2 = clamp(Math.round(a.y2 ?? 0), 0, MAX_ROWS - 1);
       a.box1 ??= null; a.box2 ??= null;
       for (const ref of [a.box1, a.box2]) {
         if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === 'box'))
@@ -72,20 +89,33 @@ export function parseShapesJson(text: string): ParsedShapes | null {
         errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
     } else {
       const p = s as BoxShape | GroupShape | TextShape;
-      p.x = Math.round(p.x ?? 0);
-      p.y = Math.round(p.y ?? 0);
-      if (s.type === 'box') {
-        const b = s as BoxShape;
-        b.w = Math.round(b.w ?? 3);
-        b.h = Math.round(b.h ?? 3);
-        fitBoxToLabel(b); // labels never get cut off
-      } else if (s.type === 'group') {
-        const g = s as GroupShape;
-        g.w = Math.round(g.w ?? 4);
-        g.h = Math.round(g.h ?? 3);
-        const [minW, minH] = groupMinSize(g);
-        if (g.w < minW) g.w = minW;
-        if (g.h < minH) g.h = minH;
+      if (!num(p.x ?? 0) || !num(p.y ?? 0)) {
+        errors.push(`${s.type} ${s.id}: "x" and "y" must be numbers`);
+        continue;
+      }
+      p.x = clamp(Math.round(p.x ?? 0), 0, MAX_COLS - 1);
+      p.y = clamp(Math.round(p.y ?? 0), 0, MAX_ROWS - 1);
+      if (s.type === 'box' || s.type === 'group') {
+        const b = s as BoxShape | GroupShape;
+        if (!num(b.w ?? 3) || !num(b.h ?? 3)) {
+          errors.push(`${s.type} ${b.id}: "w" and "h" must be numbers`);
+          continue;
+        }
+        // Clamp to the world so oversized geometry can't freeze rendering.
+        b.w = clamp(Math.round(b.w ?? (s.type === 'box' ? 3 : 4)), 1, MAX_COLS - b.x);
+        b.h = clamp(Math.round(b.h ?? 3), 1, MAX_ROWS - b.y);
+        if (s.type === 'box') {
+          fitBoxToLabel(b); // labels never get cut off
+        } else {
+          const g = s as GroupShape;
+          if (g.lanes != null && !(Array.isArray(g.lanes) && g.lanes.every((l) => typeof l === 'string'))) {
+            errors.push(`group ${g.id}: "lanes" must be an array of strings`);
+            continue;
+          }
+          const [minW, minH] = groupMinSize(g);
+          g.w = Math.min(Math.max(g.w, minW), MAX_COLS - g.x);
+          g.h = Math.min(Math.max(g.h, minH), MAX_ROWS - g.y);
+        }
       } else if (typeof (s as TextShape).text !== 'string' || !(s as TextShape).text) {
         errors.push(`text shape ${s.id} needs a non-empty "text"`);
       }
