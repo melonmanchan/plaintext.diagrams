@@ -1,6 +1,9 @@
 /**
- * Standalone renderer for plaintext.diagrams shape JSON.
- * Bundled into the agent skill so diagrams can be produced anywhere:
+ * Text renderer for plaintext.diagrams shape JSON.
+ * Bundled into the agent skill for when the deliverable is the text itself
+ * (READMEs, PRs) or an offline preview. For app-bound diagrams, paste the
+ * JSON straight into the editor instead — it imports losslessly.
+ *
  *   bun render.mjs shapes.json          → Unicode diagram on stdout
  *   cat shapes.json | bun render.mjs    → same, from stdin
  *   bun render.mjs --check shapes.json  → also re-parse the output and
@@ -9,8 +12,8 @@
 import { readFileSync } from 'node:fs';
 import { exportAscii } from '../src/export';
 import { parseAscii } from '../src/import';
-import { fitBoxToLabel } from '../src/shapes';
-import type { ArrowShape, BoxShape, GroupShape, Shape } from '../src/types';
+import { parseShapesJson } from '../src/interop';
+import type { ArrowShape, Shape } from '../src/types';
 
 function fail(msg: string): never {
   process.stderr.write('error: ' + msg + '\n');
@@ -22,51 +25,10 @@ const check = args.includes('--check');
 const file = args.find((a) => a !== '--check');
 const raw = file ? readFileSync(file, 'utf8') : readFileSync(0, 'utf8');
 
-let parsed: unknown;
-try { parsed = JSON.parse(raw); } catch (e) { fail('input is not valid JSON: ' + String(e)); }
-const list = Array.isArray(parsed)
-  ? parsed
-  : parsed && typeof parsed === 'object' && 'shapes' in parsed
-    ? parsed.shapes
-    : null;
-if (!Array.isArray(list)) fail('expected a JSON array of shapes, or { "shapes": [...] }');
-
-// Validate + normalize.
-// The boundary cast: shapes are validated field-by-field below.
-const shapes = list as Shape[];
-let seq = 1;
-const ids = new Set<number>();
-for (const s of shapes) {
-  if (!s || typeof s !== 'object') fail('shape is not an object: ' + JSON.stringify(s));
-  if (!['box', 'arrow', 'text', 'group'].includes(s.type)) fail(`unknown shape type "${String(s.type)}"`);
-  if (s.id == null) s.id = -1; // assign below, after collecting explicit ids
-  else ids.add(s.id);
-}
-for (const s of shapes) {
-  if (s.id === -1) { while (ids.has(seq)) seq++; s.id = seq; ids.add(seq); }
-}
-for (const s of shapes) {
-  if (s.type === 'arrow') {
-    const a = s as ArrowShape;
-    a.x1 ??= 0; a.y1 ??= 0; a.x2 ??= 0; a.y2 ??= 0;
-    a.box1 ??= null; a.box2 ??= null;
-    for (const ref of [a.box1, a.box2]) {
-      if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === 'box'))
-        fail(`arrow ${a.id} references box id ${ref}, which does not exist`);
-    }
-    if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
-      fail(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
-  } else if (s.type === 'box') {
-    const b = s as BoxShape;
-    b.w ??= 3; b.h ??= 3;
-    fitBoxToLabel(b); // labels never get cut off
-  } else if (s.type === 'group') {
-    const g = s as GroupShape;
-    const [minW, minH] = [Math.max(4, (g.text ?? '').length + 4), g.text ? 5 : 3];
-    if ((g.w ?? 0) < minW) g.w = minW;
-    if ((g.h ?? 0) < minH) g.h = minH;
-  }
-}
+const parsed = parseShapesJson(raw);
+if (!parsed) fail('input does not look like JSON — expected a shape array or { "shapes": [...] }');
+if (parsed.errors.length) fail(parsed.errors.join('\n'));
+const shapes = parsed.shapes;
 
 const out = exportAscii(shapes);
 if (!out) fail('diagram rendered empty — no shapes with geometry');

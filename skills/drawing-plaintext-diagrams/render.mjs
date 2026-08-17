@@ -37,6 +37,16 @@ function fitBoxToLabel(s) {
   if (s.h < minH)
     s.h = Math.min(minH, MAX_ROWS - s.y);
 }
+function groupMinSize(s) {
+  const tab = s.text ? 2 : 0;
+  const n = s.lanes?.length ?? 0;
+  if (n >= 2)
+    return [Math.max(4, n * 6), tab + 5];
+  if (!s.text)
+    return [4, 3];
+  return [Math.max(4, s.text.split(`
+`)[0].length + 4), 5];
+}
 function laneBounds(g) {
   const n = g.lanes?.length ?? 0;
   if (n < 2)
@@ -1075,6 +1085,84 @@ function parseAscii(text) {
   return [...groups, ...boxes, ...arrows, ...texts];
 }
 
+// src/interop.ts
+var SHAPE_TYPES = { box: true, arrow: true, text: true, group: true };
+function parseShapesJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("["))
+    return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (e) {
+    return { shapes: [], errors: ["invalid JSON: " + String(e)] };
+  }
+  const list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && ("shapes" in parsed) && Array.isArray(parsed.shapes) ? parsed.shapes : null;
+  if (!list)
+    return { shapes: [], errors: ['expected a shape array or { "shapes": [...] }'] };
+  const errors = [];
+  const shapes = list.map((s) => ({ ...s }));
+  const ids = new Set;
+  let seq = 1;
+  for (const s of shapes) {
+    if (!s || typeof s !== "object" || !SHAPE_TYPES[s.type]) {
+      errors.push(`unknown shape: ${JSON.stringify(s).slice(0, 80)}`);
+      continue;
+    }
+    if (typeof s.id === "number")
+      ids.add(s.id);
+  }
+  for (const s of shapes) {
+    if (typeof s.id !== "number") {
+      while (ids.has(seq))
+        seq++;
+      s.id = seq;
+      ids.add(seq);
+    }
+  }
+  for (const s of shapes) {
+    if (!SHAPE_TYPES[s.type])
+      continue;
+    if (s.type === "arrow") {
+      const a = s;
+      a.x1 ??= 0;
+      a.y1 ??= 0;
+      a.x2 ??= 0;
+      a.y2 ??= 0;
+      a.box1 ??= null;
+      a.box2 ??= null;
+      for (const ref of [a.box1, a.box2]) {
+        if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
+          errors.push(`arrow ${a.id} references box id ${ref}, which does not exist`);
+      }
+      if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
+        errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
+    } else {
+      const p = s;
+      p.x = Math.round(p.x ?? 0);
+      p.y = Math.round(p.y ?? 0);
+      if (s.type === "box") {
+        const b = s;
+        b.w = Math.round(b.w ?? 3);
+        b.h = Math.round(b.h ?? 3);
+        fitBoxToLabel(b);
+      } else if (s.type === "group") {
+        const g = s;
+        g.w = Math.round(g.w ?? 4);
+        g.h = Math.round(g.h ?? 3);
+        const [minW, minH] = groupMinSize(g);
+        if (g.w < minW)
+          g.w = minW;
+        if (g.h < minH)
+          g.h = minH;
+      } else if (typeof s.text !== "string" || !s.text) {
+        errors.push(`text shape ${s.id} needs a non-empty "text"`);
+      }
+    }
+  }
+  return { shapes: errors.length ? [] : shapes, errors };
+}
+
 // scripts/render-cli.ts
 function fail(msg) {
   process.stderr.write("error: " + msg + `
@@ -1085,65 +1173,13 @@ var args = process.argv.slice(2);
 var check = args.includes("--check");
 var file = args.find((a) => a !== "--check");
 var raw = file ? readFileSync(file, "utf8") : readFileSync(0, "utf8");
-var parsed;
-try {
-  parsed = JSON.parse(raw);
-} catch (e) {
-  fail("input is not valid JSON: " + String(e));
-}
-var list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && ("shapes" in parsed) ? parsed.shapes : null;
-if (!Array.isArray(list))
-  fail('expected a JSON array of shapes, or { "shapes": [...] }');
-var shapes = list;
-var seq = 1;
-var ids = new Set;
-for (const s of shapes) {
-  if (!s || typeof s !== "object")
-    fail("shape is not an object: " + JSON.stringify(s));
-  if (!["box", "arrow", "text", "group"].includes(s.type))
-    fail(`unknown shape type "${String(s.type)}"`);
-  if (s.id == null)
-    s.id = -1;
-  else
-    ids.add(s.id);
-}
-for (const s of shapes) {
-  if (s.id === -1) {
-    while (ids.has(seq))
-      seq++;
-    s.id = seq;
-    ids.add(seq);
-  }
-}
-for (const s of shapes) {
-  if (s.type === "arrow") {
-    const a = s;
-    a.x1 ??= 0;
-    a.y1 ??= 0;
-    a.x2 ??= 0;
-    a.y2 ??= 0;
-    a.box1 ??= null;
-    a.box2 ??= null;
-    for (const ref of [a.box1, a.box2]) {
-      if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
-        fail(`arrow ${a.id} references box id ${ref}, which does not exist`);
-    }
-    if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
-      fail(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
-  } else if (s.type === "box") {
-    const b = s;
-    b.w ??= 3;
-    b.h ??= 3;
-    fitBoxToLabel(b);
-  } else if (s.type === "group") {
-    const g = s;
-    const [minW, minH] = [Math.max(4, (g.text ?? "").length + 4), g.text ? 5 : 3];
-    if ((g.w ?? 0) < minW)
-      g.w = minW;
-    if ((g.h ?? 0) < minH)
-      g.h = minH;
-  }
-}
+var parsed = parseShapesJson(raw);
+if (!parsed)
+  fail('input does not look like JSON — expected a shape array or { "shapes": [...] }');
+if (parsed.errors.length)
+  fail(parsed.errors.join(`
+`));
+var shapes = parsed.shapes;
 var out = exportAscii(shapes);
 if (!out)
   fail("diagram rendered empty — no shapes with geometry");

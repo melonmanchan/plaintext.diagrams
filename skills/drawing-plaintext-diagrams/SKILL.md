@@ -7,17 +7,22 @@ description: Use when creating or editing box-and-arrow diagrams as text — arc
 
 ## Overview
 
-plaintext.diagrams (https://melonmanchan.github.io/plaintext.diagrams/) is a diagram editor whose file format IS the rendered Unicode text: what you export is what you paste back in, fully editable. Character-grid alignment is unforgiving, so **never hand-draw the grid**. Describe shapes as JSON and let the app's own renderer draw it:
+plaintext.diagrams (https://melonmanchan.github.io/plaintext.diagrams/) is a diagram editor whose file format IS the rendered Unicode text. It ALSO paste-imports **shapes JSON** directly — lossless, no grid geometry to get right. Describe shapes as JSON; never hand-draw the character grid.
+
+## Two delivery modes
+
+1. **Diagram for the app** (user will paste/edit it): deliver the **shapes JSON itself**. The editor detects JSON on paste (clipboard starting with `[` or `{`), validates it, and imports losslessly — invalid JSON shows the first error in the hint bar. Done; no tooling needed.
+2. **Diagram as text** (README, PR description, code comment): render the JSON to Unicode text with the bundled renderer and iterate until the round-trip check passes:
 
 ```bash
 node render.mjs --check shapes.json > diagram.txt   # render.mjs sits next to this file; bun works too
 ```
 
-`--check` re-imports the output through the app's parser and fails loudly if anything (boxes, groups, arrows, labels) would be lost.
+`--check` re-imports the render through the app's parser and fails loudly if anything (boxes, groups, arrows, labels) would be lost. The rendered text is also paste-importable.
 
 ## Shape schema
 
-Input: JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x` → columns rightward, `y` → rows downward.
+A JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x` → columns rightward, `y` → rows downward.
 
 | Shape | Fields | Notes |
 |---|---|---|
@@ -28,18 +33,12 @@ Input: JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x`
 
 Free-floating arrows (no boxes): give `x1,y1,x2,y2` instead of `box1/box2`.
 
-## Workflow
-
-1. Write `shapes.json`. Attach arrows by box ids, never coordinates.
-2. Render with `--check`; deliver the emitted text.
-3. Check failed? The hint is almost always right: **spread shapes out** and re-run.
-
-## Spacing rules (why checks fail)
+## Spacing rules (matter most for mode 2's renderer)
 
 - Leave **≥ 8 columns** between connected boxes when the arrow has a label (`── label ──▶` needs the run), ≥ 4 otherwise.
 - Leave **≥ 2 rows/columns** between any box and a group border it doesn't belong inside.
-- Group membership is geometric: a box is in the group iff fully inside the frame. Leave 1+ cell margin inside frames.
-- Boxes never overlap each other or frames they aren't inside.
+- Group membership is geometric: a box is in the group iff fully inside the frame, 1+ cell margin.
+- Boxes never overlap each other or frames they aren't inside; keep arrow corridors clear of unrelated boxes.
 
 ## Example
 
@@ -56,7 +55,7 @@ Free-floating arrows (no boxes): give `x1,y1,x2,y2` instead of `box1/box2`.
 
 ## Common mistakes
 
-- **Hand-drawing the grid** — labels beside (not on) an arrow and title-in-border groups (`┌─ Title ──┐`) silently import as stray text, not shapes. Groups are double-line `╔═╗` frames with the title in a tab; only the renderer gets this right.
-- **Crowding** — a label overlapping any border corrupts both shapes. Spread out; cells are cheap.
+- **Hand-drawing the grid** — labels beside (not on) an arrow and title-in-border groups (`┌─ Title ──┐`) silently import as stray text. Deliver JSON instead; only the renderer draws correct text.
+- **Crowding** (mode 2) — a label overlapping any border corrupts both shapes. Spread out; cells are cheap.
 - **Arrow coordinates instead of ids** — free endpoints don't re-attach when boxes move. Use `box1`/`box2`.
-- **Editing the rendered text** — regenerate from JSON instead; alignment breaks invisibly.
+- **Editing rendered text by hand** — regenerate from JSON; alignment breaks invisibly.

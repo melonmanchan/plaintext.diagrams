@@ -1,4 +1,6 @@
 import { clearAll, cycleArrowHeads, cycleStyle, deleteSelected, nudge } from './commands';
+import { MAX_COLS, MAX_ROWS } from './constants';
+import { parseShapesJson, serializeShapes } from './interop';
 import { commitEdit, startEdit } from './editor';
 import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
@@ -7,7 +9,6 @@ import { render, setupCanvas, updateToolbar } from './render';
 import { app, dropHistory, genId, getShape, loadDoc, loadHistory, pushUndo, redo, resetView, save, snapshot, soleSel, uid, undo } from './store';
 import type { Shape, Tool } from './types';
 import { clamp } from './util';
-import { MAX_COLS, MAX_ROWS } from './constants';
 
 /* ============================================================
  * Toolbar, project bar, export modal, keyboard shortcuts.
@@ -184,7 +185,7 @@ export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
   $('#zoom-reset').textContent = Math.round(z * 100) + '%';
 }
 
-/* ---------- paste: ASCII → shapes ---------- */
+/* ---------- paste: shapes JSON or ASCII → shapes ---------- */
 
 
 function onPaste(e: ClipboardEvent): void {
@@ -195,7 +196,15 @@ function onPaste(e: ClipboardEvent): void {
   const text = e.clipboardData?.getData('text/plain') ?? '';
   if (!text.trim()) return;
   e.preventDefault();
-  const parsed: Shape[] = parseAscii(text);
+  // Shapes JSON (the agent interop format) imports losslessly; anything
+  // that looks like JSON but is invalid errors out loud instead of being
+  // mangled by the text parser.
+  const json = parseShapesJson(text);
+  if (json && json.errors.length) {
+    $('#hint').textContent = 'JSON import failed: ' + json.errors[0];
+    return;
+  }
+  const parsed: Shape[] = json ? json.shapes : parseAscii(text);
   if (!parsed.length) return;
 
   // Remap the parser's local ids to fresh document ids.
@@ -388,6 +397,10 @@ export function initUi(): void {
   $('#copy').addEventListener('click', async () => {
     await copyText($<HTMLTextAreaElement>('#out').value);
     flash($('#copy'), 'Copied ✓');
+  });
+  $('#copy-json').addEventListener('click', async () => {
+    await copyText(serializeShapes(app.doc.shapes));
+    flash($('#copy-json'), 'Copied ✓');
   });
   $('#download').addEventListener('click', () => {
     const blob = new Blob([$<HTMLTextAreaElement>('#out').value + '\n'], { type: 'text/plain' });
