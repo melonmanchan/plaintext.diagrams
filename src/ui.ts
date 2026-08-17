@@ -246,12 +246,18 @@ function onKeyDown(e: KeyboardEvent): void {
   if (app.editing != null) return;
   const t = e.target;
   const modal = $('#modal');
+  const help = $('#helpmodal');
   if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement || t instanceof HTMLSelectElement) {
     if (e.key === 'Escape' && !modal.hidden) closeExport();
+    if (e.key === 'Escape' && !help.hidden) help.hidden = true;
     return;
   }
   if (!modal.hidden) {
     if (e.key === 'Escape') closeExport();
+    return;
+  }
+  if (!help.hidden) {
+    if (e.key === 'Escape' || e.key === '?') help.hidden = true;
     return;
   }
   const mod = e.metaKey || e.ctrlKey;
@@ -347,6 +353,7 @@ function onKeyDown(e: KeyboardEvent): void {
       if (e.shiftKey) openExport();
       else void exportToClipboard();
       break;
+    case '?': $('#helpmodal').hidden = false; break;
   }
 }
 
@@ -366,6 +373,11 @@ export function initUi(): void {
   $('#zoom-in').addEventListener('click', () => setZoom(app.zoom * 1.25));
   $('#zoom-out').addEventListener('click', () => setZoom(app.zoom / 1.25));
   $('#zoom-reset').addEventListener('click', () => setZoom(1));
+  $('#help').addEventListener('click', () => { $('#helpmodal').hidden = false; });
+  $('#help-close').addEventListener('click', () => { $('#helpmodal').hidden = true; });
+  $('#helpmodal').addEventListener('mousedown', (e) => {
+    if (e.target === $('#helpmodal')) $('#helpmodal').hidden = true;
+  });
   $('#stage').addEventListener('wheel', (e) => {
     if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps panning
     e.preventDefault();

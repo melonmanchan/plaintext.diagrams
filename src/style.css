@@ -150,8 +150,8 @@ canvas { display: block; }
   min-height: 26px;
 }
 
-/* ---------- export modal ---------- */
-#modal {
+/* ---------- export & help modals ---------- */
+#modal, #helpmodal {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
@@ -160,7 +160,22 @@ canvas { display: block; }
   justify-content: center;
   z-index: 100;
 }
-#modal[hidden] { display: none; }
+#modal[hidden], #helpmodal[hidden] { display: none; }
+
+#helpmodal .sheet { height: auto; max-height: 86vh; }
+.help-body {
+  overflow-y: auto;
+  padding: 4px 18px 18px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.help-body h3 { margin: 14px 0 4px; font-size: 13px; color: var(--accent); }
+.help-body p, .help-body ul { margin: 4px 0; color: var(--fg); }
+.help-body ul { padding-left: 18px; }
+.help-body code {
+  font: 12px var(--mono);
+  color: var(--muted);
+}
 
 .sheet {
   width: min(880px, 92vw);

@@ -35,6 +35,7 @@
     <button id="zoom-reset" title="Reset zoom (Cmd/Ctrl 0) · Cmd/Ctrl+scroll to zoom at cursor">100%</button>
     <button id="zoom-in" title="Zoom in (Cmd/Ctrl +)">+</button>
   </div>
+  <button id="help" title="How to use — shortcuts & tips (?)">?</button>
   <button id="export" class="primary" title="Copy ASCII to clipboard (E) · Shift+click: preview / download">Export ASCII <kbd>E</kbd></button>
 </header>
 
@@ -57,6 +58,47 @@
       <span id="stats"></span>
       <button id="download">Download .txt</button>
       <button id="copy" class="primary">Copy to clipboard</button>
+    </div>
+  </div>
+</div>
+
+<div id="helpmodal" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <b>How to use</b>
+      <button id="help-close" title="Close (Esc)">×</button>
+    </div>
+    <div class="help-body">
+      <section>
+        <h3>Tools</h3>
+        <p><kbd>V</kbd> select · <kbd>B</kbd> box · <kbd>A</kbd> arrow · <kbd>T</kbd> text · <kbd>G</kbd> group frame</p>
+        <p>Draw by dragging. With a shape selected, just type to label it — <kbd>Enter</kbd> commits, <kbd>Shift+Enter</kbd> adds a line, <kbd>Esc</kbd> cancels.</p>
+      </section>
+      <section>
+        <h3>Shape styles — <kbd>Cmd/Ctrl+D</kbd></h3>
+        <p>Cycles the kind-appropriate variant of everything selected:</p>
+        <ul>
+          <li><b>Box</b>: square ⇄ rounded <code>╭─╮</code></li>
+          <li><b>Arrow</b>: solid ⇄ dashed <code>─ ─ / ┊</code></li>
+          <li><b>Group</b>: plain frame → 2 → 3 → 4 → 5 swimlanes → plain</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Swimlanes</h3>
+        <ul>
+          <li><kbd>Cmd/Ctrl+D</kbd> on a group frame adds lanes; keep pressing to add more.</li>
+          <li><b>Double-click a lane header</b> to rename it; the group's own title lives in the tab.</li>
+          <li>Moving the frame carries everything inside; resizing keeps each item in its lane.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Arrows</h3>
+        <p><kbd>Cmd/Ctrl+B</kbd> or right-click cycles heads (end → both → start). Right-click a box, then right-click another box to connect them. Drag from a selected box's border to start an attached arrow.</p>
+      </section>
+      <section>
+        <h3>Everything else</h3>
+        <p><kbd>E</kbd> copy diagram as text · <kbd>Shift+E</kbd> preview/download · paste a text diagram to import it · <kbd>Cmd/Ctrl+C</kbd> copy selection · <kbd>L</kbd> auto-layout · <kbd>Shift+L</kbd> tidy · <kbd>Cmd/Ctrl+Z</kbd> undo</p>
+      </section>
     </div>
   </div>
 </div>
