@@ -13,13 +13,13 @@ plaintext.diagrams (https://melonmanchan.github.io/plaintext.diagrams/) is a dia
 
 **Default: deliver the shapes JSON itself.** The editor detects JSON on paste (clipboard starting with `[` or `{`), validates it, and imports losslessly — invalid JSON shows the first error in the hint bar. No tooling, no rendering step.
 
-**Render to text ONLY when the deliverable is the text itself** — a README, PR description, or code comment read outside the app — or when the user explicitly asks to see the rendered diagram. Then use the bundled renderer and iterate until the round-trip check passes:
+**Render to text ONLY when the deliverable is the text itself** — a README, PR description, or code comment read outside the app — or when the user explicitly asks to see the rendered diagram:
 
 ```bash
-node render.mjs --check shapes.json > diagram.txt   # render.mjs sits next to this file; bun works too
+node render.mjs shapes.json > diagram.txt   # render.mjs sits next to this file; bun works too
 ```
 
-`--check` re-imports the render through the app's parser and fails loudly if anything (boxes, groups, arrows, labels) would be lost. The rendered text is also paste-importable.
+The renderer validates the JSON (schema, ids, arrow references) and fails with a message when it's invalid — fix the JSON error and re-run. **Render ONCE**: do not iterate on coordinates to polish the drawing; layout is adjusted in the editor, not by re-rolling geometry. The rendered text is also paste-importable.
 
 ## Shape schema
 
@@ -34,7 +34,7 @@ A JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x` → 
 
 Free-floating arrows (no boxes): give `x1,y1,x2,y2` instead of `box1/box2`.
 
-## Spacing rules (matter most for mode 2's renderer)
+## Spacing rules (make first renders read well)
 
 - Leave **≥ 8 columns** between connected boxes when the arrow has a label (`── label ──▶` needs the run), ≥ 4 otherwise.
 - Leave **≥ 2 rows/columns** between any box and a group border it doesn't belong inside.
