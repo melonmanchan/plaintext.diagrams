@@ -1,7 +1,7 @@
 import './style.css';
 import { LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
 import { exportAscii } from './export';
-import { encodeShareLink } from './interop';
+import { decodeShareLink, encodeShareLink } from './interop';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
@@ -71,6 +71,28 @@ initInteractions();
 migrateLegacyStore();
 boot();
 render();
+
+/** A #s= share link imports as a new project (existing projects untouched). */
+async function importShareHash(): Promise<void> {
+  if (!location.hash.startsWith('#s=')) return;
+  const frag = location.hash.slice(3);
+  history.replaceState(null, '', location.pathname + location.search);
+  const decoded = await decodeShareLink(frag);
+  if ('error' in decoded) {
+    document.querySelector('#hint')!.textContent =
+      'Share link is invalid or from a newer version — ' + decoded.error;
+    return;
+  }
+  const id = genId();
+  app.projects.push({ id, name: decoded.name || 'Shared' });
+  app.doc = { seq: Math.max(1, ...decoded.shapes.map((s) => s.id + 1)), shapes: decoded.shapes };
+  app.currentProject = id;
+  app.selection = new Set();
+  save();
+  updateProjectBar();
+  render();
+}
+void importShareHash();
 
 // test hook
 declare global {
