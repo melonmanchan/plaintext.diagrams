@@ -129,3 +129,88 @@ export function parseShapesJson(text: string): ParsedShapes | null {
 export function serializeShapes(shapes: Shape[]): string {
   return '[\n' + shapes.map((s) => '  ' + JSON.stringify(s)).join(',\n') + '\n]';
 }
+
+/**
+ * Rewrite every shape id to a fresh value from `next`, fixing up arrow box
+ * refs. Used by both the paste importer and the share-link importer so that
+ * untrusted/foreign ids never reach the document (a huge id would otherwise
+ * saturate the uid counter and collide every subsequently created shape).
+ */
+export function remapIds(shapes: Shape[], next: () => number): void {
+  const idMap = new Map<number, number>();
+  for (const s of shapes) idMap.set(s.id, next());
+  for (const s of shapes) {
+    s.id = idMap.get(s.id)!;
+    if (s.type === 'arrow') {
+      s.box1 = s.box1 != null ? idMap.get(s.box1) ?? null : null;
+      s.box2 = s.box2 != null ? idMap.get(s.box2) ?? null : null;
+    }
+  }
+}
+
+/* ---------- share links: #s=1.<base64url(deflateRaw(JSON))> ---------- */
+
+const SHARE_VERSION = '1.';
+/** Hard cap on decompressed share-link bytes — blocks deflate bombs from a hostile URL. */
+const MAX_SHARE_BYTES = 1 << 22;
+
+async function pipeBytes(
+  bytes: Uint8Array<ArrayBuffer>,
+  stream: CompressionStream | DecompressionStream,
+  maxBytes = Infinity,
+): Promise<Uint8Array> {
+  const reader = new Blob([bytes]).stream().pipeThrough(stream).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) { await reader.cancel(); throw new Error('share link too large'); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** Encode a project as a URL-fragment value: `1.` + base64url(deflate(JSON)). */
+export async function encodeShareLink(name: string, shapes: Shape[]): Promise<string> {
+  const json = JSON.stringify({ n: name, s: shapes });
+  const packed = await pipeBytes(new TextEncoder().encode(json), new CompressionStream('deflate-raw'));
+  return SHARE_VERSION + toBase64Url(packed);
+}
+
+/** Decode a `#s=` fragment value back into a named shape list. */
+export async function decodeShareLink(fragment: string): Promise<{ name: string; shapes: Shape[] } | { error: string }> {
+  if (!fragment.startsWith(SHARE_VERSION)) return { error: 'unsupported share-link version' };
+  let json: string;
+  try {
+    const packed = fromBase64Url(fragment.slice(SHARE_VERSION.length));
+    json = new TextDecoder().decode(await pipeBytes(packed, new DecompressionStream('deflate-raw'), MAX_SHARE_BYTES));
+  } catch {
+    return { error: 'share link is corrupt' };
+  }
+  let payload: unknown;
+  try { payload = JSON.parse(json); } catch { return { error: 'share link is corrupt' }; }
+  if (!payload || typeof payload !== 'object' || !('s' in payload)) return { error: 'share link is corrupt' };
+  const name = 'n' in payload && typeof payload.n === 'string' ? payload.n : 'Shared';
+  const parsed = parseShapesJson(JSON.stringify({ shapes: payload.s }));
+  if (!parsed || parsed.errors.length) return { error: parsed?.errors[0] ?? 'share link is corrupt' };
+  return { name, shapes: parsed.shapes };
+}

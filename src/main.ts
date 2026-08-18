@@ -1,10 +1,11 @@
 import './style.css';
 import { LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
 import { exportAscii } from './export';
+import { decodeShareLink, encodeShareLink, remapIds } from './interop';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
-import { app, genId, loadDoc, loadHistory, save, uid } from './store';
+import { app, genId, loadDoc, loadHistory, resetView, save, uid } from './store';
 import type { DocState } from './types';
 import { initUi, setTool, switchProject, updateProjectBar } from './ui';
 
@@ -71,6 +72,34 @@ migrateLegacyStore();
 boot();
 render();
 
+/** A #s= share link imports as a new project (existing projects untouched). */
+async function importShareHash(): Promise<void> {
+  if (self !== top) return; // ignore share hashes inside an iframe — drive-by import guard
+  if (!location.hash.startsWith('#s=')) return;
+  const frag = location.hash.slice(3);
+  history.replaceState(null, '', location.pathname + location.search);
+  const decoded = await decodeShareLink(frag);
+  if ('error' in decoded) {
+    document.querySelector('#hint')!.textContent =
+      'This share link could not be opened — ' + decoded.error;
+    return;
+  }
+  // Remap untrusted ids to a fresh 1..N sequence. Incoming ids are attacker-
+  // controlled; a value >= 2^53 would saturate uid() and collide every new shape.
+  let seq = 1;
+  remapIds(decoded.shapes, () => seq++);
+  const id = genId();
+  app.projects.push({ id, name: decoded.name || 'Shared' });
+  app.doc = { seq, shapes: decoded.shapes };
+  app.currentProject = id;
+  resetView();
+  save();
+  updateProjectBar();
+  render();
+}
+void importShareHash();
+addEventListener('hashchange', () => void importShareHash());
+
 // test hook
 declare global {
   interface Window { __app: unknown }
@@ -87,4 +116,9 @@ window.__app = {
   rasterize,
   setTool,
   switchProject,
+  /** Test seam: full share URL for the current project. */
+  shareLink: async () => {
+    const name = app.projects.find((p) => p.id === app.currentProject)?.name ?? 'Shared';
+    return location.origin + location.pathname + '#s=' + await encodeShareLink(name, app.doc.shapes);
+  },
 };
