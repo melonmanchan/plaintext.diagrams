@@ -129,3 +129,52 @@ export function parseShapesJson(text: string): ParsedShapes | null {
 export function serializeShapes(shapes: Shape[]): string {
   return '[\n' + shapes.map((s) => '  ' + JSON.stringify(s)).join(',\n') + '\n]';
 }
+
+/* ---------- share links: #s=1.<base64url(deflateRaw(JSON))> ---------- */
+
+const SHARE_VERSION = '1.';
+
+async function pipeBytes(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
+  const out = await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer();
+  return new Uint8Array(out);
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** Encode a project as a URL-fragment value: `1.` + base64url(deflate(JSON)). */
+export async function encodeShareLink(name: string, shapes: Shape[]): Promise<string> {
+  const json = JSON.stringify({ n: name, s: shapes });
+  const packed = await pipeBytes(new TextEncoder().encode(json), new CompressionStream('deflate-raw'));
+  return SHARE_VERSION + toBase64Url(packed);
+}
+
+/** Decode a `#s=` fragment value back into a named shape list. */
+export async function decodeShareLink(fragment: string): Promise<{ name: string; shapes: Shape[] } | { error: string }> {
+  if (!fragment.startsWith(SHARE_VERSION)) return { error: 'unsupported share-link version' };
+  let json: string;
+  try {
+    const packed = fromBase64Url(fragment.slice(SHARE_VERSION.length));
+    json = new TextDecoder().decode(await pipeBytes(packed, new DecompressionStream('deflate-raw')));
+  } catch {
+    return { error: 'share link is corrupt' };
+  }
+  let payload: unknown;
+  try { payload = JSON.parse(json); } catch { return { error: 'share link is corrupt' }; }
+  if (!payload || typeof payload !== 'object' || !('s' in payload)) return { error: 'share link is corrupt' };
+  const name = 'n' in payload && typeof payload.n === 'string' ? payload.n : 'Shared';
+  const parsed = parseShapesJson(JSON.stringify({ shapes: payload.s }));
+  if (!parsed || parsed.errors.length) return { error: parsed?.errors[0] ?? 'share link is corrupt' };
+  return { name, shapes: parsed.shapes };
+}
