@@ -1,0 +1,22 @@
+[
+  {"type":"box","id":1,"x":0,"y":6,"w":20,"h":5,"text":"User\nbrowser"},
+  {"type":"group","id":20,"x":36,"y":0,"w":70,"h":27,"text":"Control plane"},
+  {"type":"box","id":2,"x":44,"y":6,"w":16,"h":5,"text":"Hub API"},
+  {"type":"box","id":3,"x":44,"y":15,"w":16,"h":3,"text":"Postgres","style":"round"},
+  {"type":"box","id":4,"x":76,"y":6,"w":20,"h":5,"text":"AI agent\nrunner"},
+  {"type":"box","id":5,"x":76,"y":15,"w":20,"h":3,"text":"App repos (git)"},
+  {"type":"box","id":6,"x":76,"y":21,"w":20,"h":3,"text":"Builder (CI)"},
+  {"type":"group","id":21,"x":36,"y":28,"w":70,"h":14,"text":"App runtime (EKS)"},
+  {"type":"box","id":7,"x":0,"y":33,"w":20,"h":4,"text":"Ingress"},
+  {"type":"box","id":8,"x":74,"y":33,"w":24,"h":5,"text":"App sandbox\n(pod per app)"},
+  {"type":"box","id":9,"x":78,"y":47,"w":16,"h":4,"text":"OTEL /\nSentry"},
+  {"type":"arrow","box1":1,"box2":2,"text":"prompt"},
+  {"type":"arrow","box1":2,"box2":3},
+  {"type":"arrow","box1":2,"box2":4,"text":"vibe-code"},
+  {"type":"arrow","box1":4,"box2":5,"text":"commit"},
+  {"type":"arrow","box1":5,"box2":6,"text":"webhook"},
+  {"type":"arrow","box1":6,"box2":8,"text":"deploy"},
+  {"type":"arrow","box1":1,"box2":7,"text":"open app"},
+  {"type":"arrow","box1":7,"box2":8,"text":"route"},
+  {"type":"arrow","box1":8,"box2":9,"text":"traces"}
+]
