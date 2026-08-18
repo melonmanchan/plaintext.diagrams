@@ -1,0 +1,49 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned: the skill-bundle drift check byte-compares bun's bundler
+          # output. Bump this together with a local rebundle of render.mjs.
+          bun-version: 1.2.4
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Unit tests
+        run: bunx vitest run
+
+      - name: Build
+        run: bunx vite build
+
+      - name: Skill bundle is up to date
+        run: |
+          bun build scripts/render-cli.ts --target node --outfile skills/drawing-plaintext-diagrams/render.mjs
+          git diff --exit-code -- skills/drawing-plaintext-diagrams/render.mjs || {
+            echo '::error::skills/drawing-plaintext-diagrams/render.mjs is stale — rebuild it with:'
+            echo '::error::  bun build scripts/render-cli.ts --target node --outfile skills/drawing-plaintext-diagrams/render.mjs'
+            exit 1
+          }
+
+      - name: Example renders end-to-end
+        run: |
+          out=$(node skills/drawing-plaintext-diagrams/render.mjs examples/app-platform.json)
+          echo "$out"
+          case "$out" in
+            *─*) echo 'render OK' ;;
+            *) echo '::error::example render produced no box-drawing output'; exit 1 ;;
+          esac

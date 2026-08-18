@@ -695,6 +695,7 @@ function parseShapesJson(text) {
   }
   return { shapes: errors.length ? [] : shapes, errors };
 }
+var MAX_SHARE_BYTES = 1 << 22;
 
 // scripts/render-cli.ts
 function fail(msg) {
