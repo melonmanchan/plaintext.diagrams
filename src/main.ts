@@ -5,7 +5,7 @@ import { decodeShareLink, encodeShareLink } from './interop';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
-import { app, genId, loadDoc, loadHistory, save, uid } from './store';
+import { app, genId, loadDoc, loadHistory, resetView, save, uid } from './store';
 import type { DocState } from './types';
 import { initUi, setTool, switchProject, updateProjectBar } from './ui';
 
@@ -87,7 +87,7 @@ async function importShareHash(): Promise<void> {
   app.projects.push({ id, name: decoded.name || 'Shared' });
   app.doc = { seq: Math.max(1, ...decoded.shapes.map((s) => s.id + 1)), shapes: decoded.shapes };
   app.currentProject = id;
-  app.selection = new Set();
+  resetView();
   save();
   updateProjectBar();
   render();
