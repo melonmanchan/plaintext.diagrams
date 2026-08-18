@@ -1,6 +1,7 @@
 import './style.css';
 import { LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
 import { exportAscii } from './export';
+import { encodeShareLink } from './interop';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
@@ -87,4 +88,9 @@ window.__app = {
   rasterize,
   setTool,
   switchProject,
+  /** Test seam: full share URL for the current project. */
+  shareLink: async () => {
+    const name = app.projects.find((p) => p.id === app.currentProject)?.name ?? 'Shared';
+    return location.origin + location.pathname + '#s=' + await encodeShareLink(name, app.doc.shapes);
+  },
 };

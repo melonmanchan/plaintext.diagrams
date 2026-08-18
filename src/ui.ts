@@ -1,6 +1,6 @@
 import { clearAll, cycleArrowHeads, cycleStyle, deleteSelected, nudge } from './commands';
 import { MAX_COLS, MAX_ROWS } from './constants';
-import { parseShapesJson, serializeShapes } from './interop';
+import { encodeShareLink, parseShapesJson, serializeShapes } from './interop';
 import { commitEdit, startEdit } from './editor';
 import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
@@ -419,6 +419,12 @@ export function initUi(): void {
   $('#proj-new').addEventListener('click', newProject);
   $('#proj-rename').addEventListener('click', renameProject);
   $('#proj-delete').addEventListener('click', deleteProject);
+  $('#proj-share').addEventListener('click', async () => {
+    const name = app.projects.find((p) => p.id === app.currentProject)?.name ?? 'Shared';
+    const frag = await encodeShareLink(name, app.doc.shapes);
+    await copyText(location.origin + location.pathname + '#s=' + frag);
+    flash($('#proj-share'), 'Link copied ✓');
+  });
   $('#modal').addEventListener('mousedown', (e) => {
     if (e.target === $('#modal')) closeExport();
   });
