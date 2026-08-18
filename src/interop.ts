@@ -130,13 +130,49 @@ export function serializeShapes(shapes: Shape[]): string {
   return '[\n' + shapes.map((s) => '  ' + JSON.stringify(s)).join(',\n') + '\n]';
 }
 
+/**
+ * Rewrite every shape id to a fresh value from `next`, fixing up arrow box
+ * refs. Used by both the paste importer and the share-link importer so that
+ * untrusted/foreign ids never reach the document (a huge id would otherwise
+ * saturate the uid counter and collide every subsequently created shape).
+ */
+export function remapIds(shapes: Shape[], next: () => number): void {
+  const idMap = new Map<number, number>();
+  for (const s of shapes) idMap.set(s.id, next());
+  for (const s of shapes) {
+    s.id = idMap.get(s.id)!;
+    if (s.type === 'arrow') {
+      s.box1 = s.box1 != null ? idMap.get(s.box1) ?? null : null;
+      s.box2 = s.box2 != null ? idMap.get(s.box2) ?? null : null;
+    }
+  }
+}
+
 /* ---------- share links: #s=1.<base64url(deflateRaw(JSON))> ---------- */
 
 const SHARE_VERSION = '1.';
+/** Hard cap on decompressed share-link bytes — blocks deflate bombs from a hostile URL. */
+const MAX_SHARE_BYTES = 1 << 22;
 
-async function pipeBytes(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  const out = await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer();
-  return new Uint8Array(out);
+async function pipeBytes(
+  bytes: Uint8Array<ArrayBuffer>,
+  stream: CompressionStream | DecompressionStream,
+  maxBytes = Infinity,
+): Promise<Uint8Array> {
+  const reader = new Blob([bytes]).stream().pipeThrough(stream).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) { await reader.cancel(); throw new Error('share link too large'); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -166,7 +202,7 @@ export async function decodeShareLink(fragment: string): Promise<{ name: string;
   let json: string;
   try {
     const packed = fromBase64Url(fragment.slice(SHARE_VERSION.length));
-    json = new TextDecoder().decode(await pipeBytes(packed, new DecompressionStream('deflate-raw')));
+    json = new TextDecoder().decode(await pipeBytes(packed, new DecompressionStream('deflate-raw'), MAX_SHARE_BYTES));
   } catch {
     return { error: 'share link is corrupt' };
   }

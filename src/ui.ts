@@ -1,6 +1,6 @@
 import { clearAll, cycleArrowHeads, cycleStyle, deleteSelected, nudge } from './commands';
 import { MAX_COLS, MAX_ROWS } from './constants';
-import { encodeShareLink, parseShapesJson, serializeShapes } from './interop';
+import { encodeShareLink, parseShapesJson, remapIds, serializeShapes } from './interop';
 import { commitEdit, startEdit } from './editor';
 import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
@@ -208,15 +208,7 @@ function onPaste(e: ClipboardEvent): void {
   if (!parsed.length) return;
 
   // Remap the parser's local ids to fresh document ids.
-  const idMap = new Map<number, number>();
-  for (const s of parsed) idMap.set(s.id, uid());
-  for (const s of parsed) {
-    s.id = idMap.get(s.id)!;
-    if (s.type === 'arrow') {
-      s.box1 = s.box1 != null ? idMap.get(s.box1) ?? null : null;
-      s.box2 = s.box2 != null ? idMap.get(s.box2) ?? null : null;
-    }
-  }
+  remapIds(parsed, uid);
 
   // Translate content to the paste anchor (cursor cell) and clamp on-canvas.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

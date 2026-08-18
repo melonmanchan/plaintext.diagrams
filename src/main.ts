@@ -1,7 +1,7 @@
 import './style.css';
 import { LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
 import { exportAscii } from './export';
-import { decodeShareLink, encodeShareLink } from './interop';
+import { decodeShareLink, encodeShareLink, remapIds } from './interop';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
@@ -74,18 +74,23 @@ render();
 
 /** A #s= share link imports as a new project (existing projects untouched). */
 async function importShareHash(): Promise<void> {
+  if (self !== top) return; // ignore share hashes inside an iframe — drive-by import guard
   if (!location.hash.startsWith('#s=')) return;
   const frag = location.hash.slice(3);
   history.replaceState(null, '', location.pathname + location.search);
   const decoded = await decodeShareLink(frag);
   if ('error' in decoded) {
     document.querySelector('#hint')!.textContent =
-      'Share link is invalid or from a newer version — ' + decoded.error;
+      'This share link could not be opened — ' + decoded.error;
     return;
   }
+  // Remap untrusted ids to a fresh 1..N sequence. Incoming ids are attacker-
+  // controlled; a value >= 2^53 would saturate uid() and collide every new shape.
+  let seq = 1;
+  remapIds(decoded.shapes, () => seq++);
   const id = genId();
   app.projects.push({ id, name: decoded.name || 'Shared' });
-  app.doc = { seq: Math.max(1, ...decoded.shapes.map((s) => s.id + 1)), shapes: decoded.shapes };
+  app.doc = { seq, shapes: decoded.shapes };
   app.currentProject = id;
   resetView();
   save();
@@ -93,6 +98,7 @@ async function importShareHash(): Promise<void> {
   render();
 }
 void importShareHash();
+addEventListener('hashchange', () => void importShareHash());
 
 // test hook
 declare global {
