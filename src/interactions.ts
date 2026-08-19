@@ -422,9 +422,10 @@ function onContextMenu(e: MouseEvent): void {
     });
     pushUndo(snap);
     connectFrom = null;
-    app.selection = new Set([b.id]); // select the new box → type to label it
+    app.selection = new Set([b.id]);
     save();
     render();
+    startEdit(b); // label editor opens focused — just type
     return;
   }
   connectFrom = null;
