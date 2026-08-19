@@ -179,7 +179,7 @@ function onMouseMove(e: MouseEvent): void {
   const { px, py } = eventPos(e);
   const { x: cx, y: cy } = cellAt(px, py);
   document.querySelector('#hint')!.textContent = connectFrom != null
-    ? `${cx},${cy}   right-click another box to connect · right-click elsewhere to cancel`
+    ? `${cx},${cy}   right-click another box to connect · right-click empty space: new connected box · right-click elsewhere to cancel`
     : hintText(cx, cy);
   app.mouseCell = { x: cx, y: cy };
 
@@ -401,8 +401,30 @@ function onContextMenu(e: MouseEvent): void {
       app.selection = new Set([s.id]);
       render();
       document.querySelector('#hint')!.textContent =
-        `${cx},${cy}   right-click another box to connect it to "${s.text || 'this box'}"`;
+        `${cx},${cy}   right-click another box to connect it to "${s.text || 'this box'}" · right-click empty space for a new connected box`;
     }
+    return;
+  }
+  // Right-click on empty canvas with a source armed (pending connect) or a
+  // single box selected: drop a new connected box there — type to label it.
+  const sel = soleSel();
+  const fromId = connectFrom ?? (sel && sel.type === 'box' ? sel.id : null);
+  const from = fromId != null ? getShape(fromId) : null;
+  if (from && from.type === 'box') {
+    const snap = snapshot();
+    const b = quickBox(cx, cy);
+    app.doc.shapes.push(b);
+    app.doc.shapes.push({
+      type: 'arrow', id: uid(),
+      x1: from.x + (from.w >> 1), y1: from.y + (from.h >> 1),
+      x2: b.x + (b.w >> 1), y2: b.y + (b.h >> 1),
+      box1: from.id, box2: b.id,
+    });
+    pushUndo(snap);
+    connectFrom = null;
+    app.selection = new Set([b.id]); // select the new box → type to label it
+    save();
+    render();
     return;
   }
   connectFrom = null;
