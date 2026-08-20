@@ -25,10 +25,16 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
   ta.style.lineHeight = CH + 'px';
   ctx.font = FONT;
   ta.style.letterSpacing = (CW - ctx.measureText('M').width).toFixed(2) + 'px';
+  // The overlay lives in world px, scaled to the zoomed canvas. Every
+  // left/top write below multiplies by z — including the ones that run on
+  // later input events (a one-time post-scale here drifted on re-position).
+  const z = app.zoom;
+  ta.style.transformOrigin = '0 0';
+  ta.style.transform = `scale(${z})`;
 
   if (s.type === 'box') {
-    ta.style.left = (s.x + 1) * CW + 'px';
-    ta.style.top = (s.y + 1) * CH + 'px';
+    ta.style.left = (s.x + 1) * CW * z + 'px';
+    ta.style.top = (s.y + 1) * CH * z + 'px';
     ta.style.textAlign = 'center';
     const ow = s.w, oh = s.h;
     // Grow the box live while typing (never below its pre-edit size).
@@ -65,14 +71,14 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
     const ox = at.x, oy = at.y;
     const centered = s.type === 'arrow'; // labels render centered on the midpoint
     if (centered) ta.style.textAlign = 'center';
-    ta.style.left = ox * CW + 'px';
-    ta.style.top = oy * CH + 'px';
+    ta.style.left = ox * CW * z + 'px';
+    ta.style.top = oy * CH * z + 'px';
     const fit = () => {
       const lines = ta.value.split('\n');
       const wch = Math.max(8, ...lines.map((l) => l.length)) + 2;
       ta.style.width = wch * CW + 'px';
       ta.style.height = Math.max(1, lines.length) * CH + 4 + 'px';
-      if (centered) ta.style.left = (ox + 0.5) * CW - (wch * CW) / 2 + 'px';
+      if (centered) ta.style.left = ((ox + 0.5) * CW - (wch * CW) / 2) * z + 'px';
     };
     ta.addEventListener('input', fit);
     fit();
@@ -98,13 +104,7 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
   });
   ta.addEventListener('blur', () => commitEdit());
 
-  // The overlay is laid out in world px; scale it to match the zoomed canvas.
-  if (app.zoom !== 1) {
-    ta.style.transformOrigin = '0 0';
-    ta.style.transform = `scale(${app.zoom})`;
-    ta.style.left = parseFloat(ta.style.left) * app.zoom + 'px';
-    ta.style.top = parseFloat(ta.style.top) * app.zoom + 'px';
-  }
+
 
   document.querySelector('#world')!.appendChild(ta);
   editorEl = ta;
