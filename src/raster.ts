@@ -469,9 +469,9 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
 
   // Pinned sides can face AWAY from the other endpoint; the legacy branches
   // below assume facing anchors and would route straight through the box.
-  // Pinned arrows instead leave each anchor through an outward escape stub
-  // and connect between the stubs — the stub length grows with the slot
-  // offset so parallel pinned arrows keep distinct corridors.
+  // Pinned arrows leave each anchor through an outward escape stub, then
+  // connect between the stubs choosing the shortest candidate whose
+  // segments cross neither endpoint box.
   if ((a.side1 != null && b1) || (a.side2 != null && b2)) {
     const outPt = (p: Point, side: Side | null, k: number): Point =>
       side === 'right' ? { x: p.x + k, y: p.y }
@@ -481,10 +481,46 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       : p;
     const e1 = outPt(p1, side1, 2 + Math.abs(off1));
     const e2 = outPt(p2, side2, 2 + Math.abs(off2));
-    const bend = side1 === 'left' || side1 === 'right' || (side1 == null && ax1 === 'h')
-      ? { x: e1.x, y: e2.y }
-      : { x: e2.x, y: e1.y };
-    const route: Point[] = [p1, e1, bend, e2, p2];
+
+    const hitsBox = (u: Point, v: Point, b: BoxShape | null): boolean => {
+      if (!b) return false;
+      return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 &&
+             Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
+    };
+    const clean = (pts: Point[]): boolean => {
+      // stubs (first and last segment) are outward by construction; check
+      // the connecting segments against both boxes.
+      for (let i = 1; i < pts.length - 2; i++)
+        if (hitsBox(pts[i], pts[i + 1], b1) || hitsBox(pts[i], pts[i + 1], b2)) return false;
+      return true;
+    };
+    const len = (pts: Point[]): number => {
+      let t = 0;
+      for (let i = 0; i < pts.length - 1; i++)
+        t += Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
+      return t;
+    };
+
+    const candidates: Point[][] = [
+      [p1, e1, { x: e2.x, y: e1.y }, e2, p2],
+      [p1, e1, { x: e1.x, y: e2.y }, e2, p2],
+    ];
+    // Corridors around the union of both boxes for when both bends collide.
+    const bs = [b1, b2].filter((b): b is BoxShape => b != null);
+    if (bs.length) {
+      const minX = Math.min(...bs.map((b) => b.x)) - 2;
+      const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
+      const minY = Math.min(...bs.map((b) => b.y)) - 2;
+      const maxY = Math.max(...bs.map((b) => b.y + b.h - 1)) + 2;
+      for (const cx of [minX, maxX])
+        candidates.push([p1, e1, { x: cx, y: e1.y }, { x: cx, y: e2.y }, e2, p2]);
+      for (const cy of [minY, maxY])
+        candidates.push([p1, e1, { x: e1.x, y: cy }, { x: e2.x, y: cy }, e2, p2]);
+    }
+    const usable = candidates.filter(clean);
+    const route = (usable.length ? usable : candidates)
+      .reduce((best, c) => (len(c) < len(best) ? c : best));
+
     const out: Point[] = [route[0]];
     for (let i = 1; i < route.length; i++) {
       const last = out[out.length - 1];
