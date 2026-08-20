@@ -4,7 +4,7 @@ import { commitEdit, startEdit } from './editor';
 import { render } from './render';
 import { applyGroupSlots, boxAt, boxAttachAt, boxHandles, boxMinSize, captureGroupSlots, dropSide, groupMinSize, groupTopRow, insideGroup, laneBounds, onBoxBorder, placeFrom, snapBox } from './shapes';
 import { app, getShape, pushUndo, save, snapshot, soleSel, uid } from './store';
-import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, TextShape } from './types';
+import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, Side, TextShape } from './types';
 import { hintText, setTool } from './ui';
 import { clamp, clone } from './util';
 
@@ -369,8 +369,10 @@ function updateCursor(px: number, py: number, cx: number, cy: number): void {
   canvas.style.cursor = cur;
 }
 
-// Pending source box for right-click → right-click connection.
+// Pending source box for right-click → right-click connection; edge
+// clicks remember which side to pin the arrow's source on.
 let connectFrom: number | null = null;
+let connectSide: Side | undefined;
 
 function onContextMenu(e: MouseEvent): void {
   e.preventDefault();
@@ -381,6 +383,7 @@ function onContextMenu(e: MouseEvent): void {
 
   if (s && s.type === 'arrow') {
     connectFrom = null;
+    connectSide = undefined;
     app.selection = new Set([s.id]);
     cycleArrowHeads();
     return;
@@ -396,19 +399,22 @@ function onContextMenu(e: MouseEvent): void {
         x1: from.x + (from.w >> 1), y1: from.y + (from.h >> 1),
         x2: s.x + (s.w >> 1), y2: s.y + (s.h >> 1),
         box1: from.id, box2: s.id,
+        side1: connectSide, side2: dropSide(s, cx, cy),
       });
       pushUndo(snap);
       connectFrom = null;
+      connectSide = undefined;
       app.selection = new Set([id]);
       save();
       render();
     } else {
       // First right-click: remember the source and highlight it.
       connectFrom = s.id;
+      connectSide = dropSide(s, cx, cy);
       app.selection = new Set([s.id]);
       render();
       document.querySelector('#hint')!.textContent =
-        `${cx},${cy}   right-click another box to connect it to "${s.text || 'this box'}" · right-click empty space for a new connected box`;
+        `${cx},${cy}   right-click another box to connect it to "${s.text || 'this box'}" · right-click empty space for a new connected box · edge clicks pin that side`;
     }
     return;
   }
@@ -426,9 +432,11 @@ function onContextMenu(e: MouseEvent): void {
       x1: from.x + (from.w >> 1), y1: from.y + (from.h >> 1),
       x2: b.x + (b.w >> 1), y2: b.y + (b.h >> 1),
       box1: from.id, box2: b.id,
+      side1: connectFrom != null ? connectSide : undefined,
     });
     pushUndo(snap);
     connectFrom = null;
+    connectSide = undefined;
     app.selection = new Set([b.id]);
     save();
     render();
@@ -436,6 +444,7 @@ function onContextMenu(e: MouseEvent): void {
     return;
   }
   connectFrom = null;
+  connectSide = undefined;
 }
 
 export function initInteractions(): void {

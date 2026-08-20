@@ -516,6 +516,29 @@ function resolveArrow(a, shapes) {
   } else if (!ax1 && ax2) {
     ax1 = ax2 === "h" ? dy === 0 ? "h" : "v" : dx === 0 ? "v" : "h";
   }
+  if (a.side1 != null && b1 || a.side2 != null && b2) {
+    const outPt = (p, side, k) => side === "right" ? { x: p.x + k, y: p.y } : side === "left" ? { x: p.x - k, y: p.y } : side === "bottom" ? { x: p.x, y: p.y + k } : side === "top" ? { x: p.x, y: p.y - k } : p;
+    const e1 = outPt(p1, side1, 2 + Math.abs(off1));
+    const e2 = outPt(p2, side2, 2 + Math.abs(off2));
+    const bend = side1 === "left" || side1 === "right" || side1 == null && ax1 === "h" ? { x: e1.x, y: e2.y } : { x: e2.x, y: e1.y };
+    const route = [p1, e1, bend, e2, p2];
+    const out2 = [route[0]];
+    for (let i = 1;i < route.length; i++) {
+      const last = out2[out2.length - 1];
+      if (route[i].x !== last.x || route[i].y !== last.y)
+        out2.push(route[i]);
+    }
+    for (let i = out2.length - 2;i > 0; i--) {
+      const a0 = out2[i - 1], m = out2[i], b0 = out2[i + 1];
+      if (a0.x === m.x && m.x === b0.x || a0.y === m.y && m.y === b0.y)
+        out2.splice(i, 1);
+    }
+    return {
+      pts: out2,
+      into1: side1 ? INTO_HEAD[side1] : null,
+      into2: side2 ? INTO_HEAD[side2] : null
+    };
+  }
   let pts;
   if (ax1 === "h" && ax2 === "h") {
     if (dy === 0 && !(side1 != null && side1 === side2))

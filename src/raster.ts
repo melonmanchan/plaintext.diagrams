@@ -453,6 +453,41 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
     ax1 = ax2 === 'h' ? (dy === 0 ? 'h' : 'v') : (dx === 0 ? 'v' : 'h');
   }
 
+  // Pinned sides can face AWAY from the other endpoint; the legacy branches
+  // below assume facing anchors and would route straight through the box.
+  // Pinned arrows instead leave each anchor through an outward escape stub
+  // and connect between the stubs — the stub length grows with the slot
+  // offset so parallel pinned arrows keep distinct corridors.
+  if ((a.side1 != null && b1) || (a.side2 != null && b2)) {
+    const outPt = (p: Point, side: Side | null, k: number): Point =>
+      side === 'right' ? { x: p.x + k, y: p.y }
+      : side === 'left' ? { x: p.x - k, y: p.y }
+      : side === 'bottom' ? { x: p.x, y: p.y + k }
+      : side === 'top' ? { x: p.x, y: p.y - k }
+      : p;
+    const e1 = outPt(p1, side1, 2 + Math.abs(off1));
+    const e2 = outPt(p2, side2, 2 + Math.abs(off2));
+    const bend = side1 === 'left' || side1 === 'right' || (side1 == null && ax1 === 'h')
+      ? { x: e1.x, y: e2.y }
+      : { x: e2.x, y: e1.y };
+    const route: Point[] = [p1, e1, bend, e2, p2];
+    const out: Point[] = [route[0]];
+    for (let i = 1; i < route.length; i++) {
+      const last = out[out.length - 1];
+      if (route[i].x !== last.x || route[i].y !== last.y) out.push(route[i]);
+    }
+    // drop collinear middle points so straight runs stay single segments
+    for (let i = out.length - 2; i > 0; i--) {
+      const a0 = out[i - 1], m = out[i], b0 = out[i + 1];
+      if ((a0.x === m.x && m.x === b0.x) || (a0.y === m.y && m.y === b0.y)) out.splice(i, 1);
+    }
+    return {
+      pts: out,
+      into1: side1 ? INTO_HEAD[side1] : null,
+      into2: side2 ? INTO_HEAD[side2] : null,
+    };
+  }
+
   let pts: Point[];
   if (ax1 === 'h' && ax2 === 'h') {
     if (dy === 0 && !(side1 != null && side1 === side2)) pts = [p1, p2];

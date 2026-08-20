@@ -73,4 +73,18 @@ describe('arrow side pins', () => {
     const bad = parseShapesJson('[{"type":"box","id":1,"x":0,"y":0,"w":8,"h":3},{"type":"arrow","box1":1,"side2":"diagonal","x2":30,"y2":9}]');
     expect(bad!.errors[0]).toContain('side2');
   });
+  it('far-side pins route around the box, never through it', () => {
+    const a = box(1, 2, 2, 12, 5, 'P');
+    const b = box(2, 34, 2, 12, 5, 'T');
+    const ar = arrow(3, { box1: 1, box2: 2, side1: 'bottom', side2: 'right' });
+    const first = exportAscii([a, b, ar]);
+    // T's interior row must be untouched by the arrow line
+    const rowT = first.split('\n')[2];
+    expect(rowT).toContain('│    T     │');
+    const re = parseAscii(first);
+    expect(re.filter((s) => s.type === 'box')).toHaveLength(2);
+    const ra = re.find((s): s is ArrowShape => s.type === 'arrow');
+    expect(ra?.side2).toBe('right');
+    expect(exportAscii(re)).toBe(first);
+  });
 });
