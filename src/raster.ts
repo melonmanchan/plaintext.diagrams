@@ -467,12 +467,35 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
     ax1 = ax2 === 'h' ? (dy === 0 ? 'h' : 'v') : (dx === 0 ? 'v' : 'h');
   }
 
-  // Pinned sides can face AWAY from the other endpoint; the legacy branches
-  // below assume facing anchors and would route straight through the box.
-  // Pinned arrows leave each anchor through an outward escape stub, then
-  // connect between the stubs choosing the shortest candidate whose
-  // segments cross neither endpoint box.
-  if ((a.side1 != null && b1) || (a.side2 != null && b2)) {
+  // ---- shared route-avoidance machinery ------------------------------
+  // Cleanliness: no segment overlaps ANY box. The segments adjacent to an
+  // attached anchor are exempt for their own box (they must touch it), and
+  // outward stubs are safe by construction.
+  const obstacles = shapes.filter(
+    (s): s is BoxShape => s.type === 'box' && s !== b1 && s !== b2,
+  );
+  const hitsBox = (u: Point, v: Point, b: BoxShape | null): boolean => {
+    if (!b) return false;
+    return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 &&
+           Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
+  };
+  const segsClean = (pts: Point[]): boolean => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const u = pts[i], v = pts[i + 1];
+      if (i > 0 && hitsBox(u, v, b1)) return false;
+      if (i < pts.length - 2 && hitsBox(u, v, b2)) return false;
+      for (const ob of obstacles) if (hitsBox(u, v, ob)) return false;
+    }
+    return true;
+  };
+  const pathLen = (pts: Point[]): number => {
+    let t = 0;
+    for (let i = 0; i < pts.length - 1; i++)
+      t += Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
+    return t;
+  };
+  /** Escape-stub routing: shortest candidate whose segments cross no box. */
+  const routeAvoiding = (): Point[] => {
     const outPt = (p: Point, side: Side | null, k: number): Point =>
       side === 'right' ? { x: p.x + k, y: p.y }
       : side === 'left' ? { x: p.x - k, y: p.y }
@@ -481,32 +504,17 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       : p;
     const e1 = outPt(p1, side1, 2 + Math.abs(off1));
     const e2 = outPt(p2, side2, 2 + Math.abs(off2));
-
-    const hitsBox = (u: Point, v: Point, b: BoxShape | null): boolean => {
-      if (!b) return false;
-      return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 &&
-             Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
-    };
-    const clean = (pts: Point[]): boolean => {
-      // stubs (first and last segment) are outward by construction; check
-      // the connecting segments against both boxes.
-      for (let i = 1; i < pts.length - 2; i++)
-        if (hitsBox(pts[i], pts[i + 1], b1) || hitsBox(pts[i], pts[i + 1], b2)) return false;
-      return true;
-    };
-    const len = (pts: Point[]): number => {
-      let t = 0;
-      for (let i = 0; i < pts.length - 1; i++)
-        t += Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
-      return t;
-    };
-
     const candidates: Point[][] = [
       [p1, e1, { x: e2.x, y: e1.y }, e2, p2],
       [p1, e1, { x: e1.x, y: e2.y }, e2, p2],
     ];
-    // Corridors around the union of both boxes for when both bends collide.
-    const bs = [b1, b2].filter((b): b is BoxShape => b != null);
+    // Corridors around the union of the endpoint boxes and any obstacle
+    // near the direct span, for when both simple bends collide.
+    const spanX1 = Math.min(p1.x, p2.x) - 4, spanX2 = Math.max(p1.x, p2.x) + 4;
+    const spanY1 = Math.min(p1.y, p2.y) - 4, spanY2 = Math.max(p1.y, p2.y) + 4;
+    const bs = [b1, b2, ...obstacles.filter((o) =>
+      o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1,
+    )].filter((b): b is BoxShape => b != null);
     if (bs.length) {
       const minX = Math.min(...bs.map((b) => b.x)) - 2;
       const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
@@ -517,10 +525,11 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       for (const cy of [minY, maxY])
         candidates.push([p1, e1, { x: e1.x, y: cy }, { x: e2.x, y: cy }, e2, p2]);
     }
-    const usable = candidates.filter(clean);
-    const route = (usable.length ? usable : candidates)
-      .reduce((best, c) => (len(c) < len(best) ? c : best));
-
+    const usable = candidates.filter(segsClean);
+    return (usable.length ? usable : candidates)
+      .reduce((best, c) => (pathLen(c) < pathLen(best) ? c : best));
+  };
+  const finalize = (route: Point[]): ResolvedArrow => {
     const out: Point[] = [route[0]];
     for (let i = 1; i < route.length; i++) {
       const last = out[out.length - 1];
@@ -536,7 +545,12 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       into1: side1 ? INTO_HEAD[side1] : null,
       into2: side2 ? INTO_HEAD[side2] : null,
     };
-  }
+  };
+
+  // Pinned sides can face AWAY from the other endpoint; the legacy branches
+  // below assume facing anchors — pinned arrows always take the avoiding
+  // stub router.
+  if ((a.side1 != null && b1) || (a.side2 != null && b2)) return finalize(routeAvoiding());
 
   let pts: Point[];
   if (ax1 === 'h' && ax2 === 'h') {
@@ -585,6 +599,10 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       pts = [p1, { x: p1.x, y: p2.y }, p2];
     }
   }
+
+  // Legacy routes stay exactly as they are when clean; only routes that
+  // overdraw a box (endpoint or bystander) take the avoiding router.
+  if ((b1 || b2) && !segsClean(pts)) return finalize(routeAvoiding());
 
   const out: Point[] = [pts[0]];
   for (let i = 1; i < pts.length; i++) {

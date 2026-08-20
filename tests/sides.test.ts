@@ -129,4 +129,20 @@ describe('arrow side pins', () => {
     expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
     expect(exportAscii(re)).toBe(first);
   });
+
+  it('auto routes detour around bystander boxes on the direct line', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 4, 10, 3, 'A'),
+      box(2, 44, 4, 10, 3, 'B'),
+      box(3, 22, 3, 10, 5, 'C'),
+      arrow(4, { box1: 1, box2: 2, text: 'go' }),
+    ];
+    const first = exportAscii(shapes);
+    expect(first.split('\n').some((l) => l.includes('│   C    │'))).toBe(true);
+    const re = parseAscii(first);
+    expect(re.filter((s) => s.type === 'box')).toHaveLength(3);
+    expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
+    expect(re.find((s): s is ArrowShape => s.type === 'arrow')?.text).toBe('go');
+    expect(exportAscii(re)).toBe(first);
+  });
 });

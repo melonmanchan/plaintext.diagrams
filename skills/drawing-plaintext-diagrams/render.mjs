@@ -524,32 +524,42 @@ function resolveArrow(a, shapes) {
   } else if (!ax1 && ax2) {
     ax1 = ax2 === "h" ? dy === 0 ? "h" : "v" : dx === 0 ? "v" : "h";
   }
-  if (a.side1 != null && b1 || a.side2 != null && b2) {
+  const obstacles = shapes.filter((s) => s.type === "box" && s !== b1 && s !== b2);
+  const hitsBox = (u, v, b) => {
+    if (!b)
+      return false;
+    return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 && Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
+  };
+  const segsClean = (pts2) => {
+    for (let i = 0;i < pts2.length - 1; i++) {
+      const u = pts2[i], v = pts2[i + 1];
+      if (i > 0 && hitsBox(u, v, b1))
+        return false;
+      if (i < pts2.length - 2 && hitsBox(u, v, b2))
+        return false;
+      for (const ob of obstacles)
+        if (hitsBox(u, v, ob))
+          return false;
+    }
+    return true;
+  };
+  const pathLen = (pts2) => {
+    let t = 0;
+    for (let i = 0;i < pts2.length - 1; i++)
+      t += Math.abs(pts2[i + 1].x - pts2[i].x) + Math.abs(pts2[i + 1].y - pts2[i].y);
+    return t;
+  };
+  const routeAvoiding = () => {
     const outPt = (p, side, k) => side === "right" ? { x: p.x + k, y: p.y } : side === "left" ? { x: p.x - k, y: p.y } : side === "bottom" ? { x: p.x, y: p.y + k } : side === "top" ? { x: p.x, y: p.y - k } : p;
     const e1 = outPt(p1, side1, 2 + Math.abs(off1));
     const e2 = outPt(p2, side2, 2 + Math.abs(off2));
-    const hitsBox = (u, v, b) => {
-      if (!b)
-        return false;
-      return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 && Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
-    };
-    const clean = (pts2) => {
-      for (let i = 1;i < pts2.length - 2; i++)
-        if (hitsBox(pts2[i], pts2[i + 1], b1) || hitsBox(pts2[i], pts2[i + 1], b2))
-          return false;
-      return true;
-    };
-    const len = (pts2) => {
-      let t = 0;
-      for (let i = 0;i < pts2.length - 1; i++)
-        t += Math.abs(pts2[i + 1].x - pts2[i].x) + Math.abs(pts2[i + 1].y - pts2[i].y);
-      return t;
-    };
     const candidates = [
       [p1, e1, { x: e2.x, y: e1.y }, e2, p2],
       [p1, e1, { x: e1.x, y: e2.y }, e2, p2]
     ];
-    const bs = [b1, b2].filter((b) => b != null);
+    const spanX1 = Math.min(p1.x, p2.x) - 4, spanX2 = Math.max(p1.x, p2.x) + 4;
+    const spanY1 = Math.min(p1.y, p2.y) - 4, spanY2 = Math.max(p1.y, p2.y) + 4;
+    const bs = [b1, b2, ...obstacles.filter((o) => o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1)].filter((b) => b != null);
     if (bs.length) {
       const minX = Math.min(...bs.map((b) => b.x)) - 2;
       const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
@@ -560,8 +570,10 @@ function resolveArrow(a, shapes) {
       for (const cy of [minY, maxY])
         candidates.push([p1, e1, { x: e1.x, y: cy }, { x: e2.x, y: cy }, e2, p2]);
     }
-    const usable = candidates.filter(clean);
-    const route = (usable.length ? usable : candidates).reduce((best, c) => len(c) < len(best) ? c : best);
+    const usable = candidates.filter(segsClean);
+    return (usable.length ? usable : candidates).reduce((best, c) => pathLen(c) < pathLen(best) ? c : best);
+  };
+  const finalize = (route) => {
     const out2 = [route[0]];
     for (let i = 1;i < route.length; i++) {
       const last = out2[out2.length - 1];
@@ -578,7 +590,9 @@ function resolveArrow(a, shapes) {
       into1: side1 ? INTO_HEAD[side1] : null,
       into2: side2 ? INTO_HEAD[side2] : null
     };
-  }
+  };
+  if (a.side1 != null && b1 || a.side2 != null && b2)
+    return finalize(routeAvoiding());
   let pts;
   if (ax1 === "h" && ax2 === "h") {
     if (dy === 0 && !(side1 != null && side1 === side2))
@@ -613,6 +627,8 @@ function resolveArrow(a, shapes) {
       pts = [p1, { x: p1.x, y: p2.y }, p2];
     }
   }
+  if ((b1 || b2) && !segsClean(pts))
+    return finalize(routeAvoiding());
   const out = [pts[0]];
   for (let i = 1;i < pts.length; i++) {
     const last = out[out.length - 1];
