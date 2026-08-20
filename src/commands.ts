@@ -38,6 +38,8 @@ export function cycleArrowSide(which: 1 | 2): boolean {
   const next = SIDE_CYCLE[(SIDE_CYCLE.indexOf(a[key]) + 1) % SIDE_CYCLE.length];
   if (next === undefined) delete a[key];
   else a[key] = next;
+  // an exact offset along the previous side is meaningless on the new one
+  delete a[which === 1 ? 'at1' : 'at2'];
   save();
   render();
   return true;

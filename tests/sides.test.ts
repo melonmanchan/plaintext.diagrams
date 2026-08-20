@@ -87,4 +87,33 @@ describe('arrow side pins', () => {
     expect(ra?.side2).toBe('right');
     expect(exportAscii(re)).toBe(first);
   });
+
+  it('exact offsets keep the anchor at the clicked cell', () => {
+    // B is far right-and-below: the auto cross would slide to A's
+    // bottom-right corner; at1 keeps the exit under the clicked column.
+    const a = box(1, 0, 0, 12, 3, 'A');
+    const b = box(2, 27, 8, 12, 4, 'B');
+    const ar = arrow(3, { box1: 1, box2: 2, side1: 'bottom', at1: 2 });
+    const shapes: Shape[] = [a, b, ar];
+    resolveArrow(ar, shapes);
+    expect(ar.x1).toBe(2);            // clicked column, not the far corner
+    expect(ar.y1).toBe(a.y + a.h);
+  });
+
+  it('exact offsets survive the text round-trip', () => {
+    const a = box(1, 0, 0, 12, 3, 'A');
+    const b = box(2, 27, 8, 12, 4, 'B');
+    const ar = arrow(3, { box1: 1, box2: 2, side1: 'bottom', at1: 2 });
+    const first = exportAscii([a, b, ar]);
+    const re = parseAscii(first);
+    const ra = re.find((s): s is ArrowShape => s.type === 'arrow');
+    expect(ra?.side1).toBe('bottom');
+    expect(ra?.at1).toBe(2);
+    expect(exportAscii(re)).toBe(first);
+  });
+
+  it('interop validates at offsets', () => {
+    const bad = parseShapesJson('[{"type":"box","id":1,"x":0,"y":0,"w":8,"h":3},{"type":"box","id":2,"x":20,"y":0,"w":8,"h":3},{"type":"arrow","box1":1,"box2":2,"side1":"top","at1":"x"}]');
+    expect(bad!.errors[0]).toContain('at1');
+  });
 });

@@ -28,7 +28,7 @@ A JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x` → 
 | Shape | Fields | Notes |
 |---|---|---|
 | box | `{type:'box', id, x, y, w, h, text?, style?}` | `style:'round'` for `╭─╮` corners; w/h auto-grow to fit text |
-| arrow | `{type:'arrow', box1?, box2?, text?, heads?, style?, side1?, side2?}` | attach by box `id`s — routing is automatic; `heads:'both'\|'start'`, `style:'dashed'`; `side1`/`side2:'left'\|'right'\|'top'\|'bottom'` softly pin which box side each end anchors on (omit = auto) |
+| arrow | `{type:'arrow', box1?, box2?, text?, heads?, style?, side1?, side2?, at1?, at2?}` | attach by box `id`s — routing is automatic; `heads:'both'\|'start'`, `style:'dashed'`; `side1`/`side2:'left'\|'right'\|'top'\|'bottom'` softly pin which box side each end anchors on; `at1`/`at2` pin the exact cell along that side (offset from the box origin) — omit for auto |
 | group | `{type:'group', id, x, y, w, h, text?, lanes?}` | frame; contains whatever sits geometrically inside; `lanes:['A','B']` = swimlanes; titled groups need `h ≥ 5` |
 | text | `{type:'text', x, y, text}` | free-standing annotation |
 

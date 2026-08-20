@@ -1,6 +1,6 @@
 import { sideFor } from './raster';
 import { dropSide } from './shapes';
-import type { ArrowShape, BoxShape, GroupShape, Shape, TextShape } from './types';
+import type { ArrowShape, BoxShape, GroupShape, Shape, Side, TextShape } from './types';
 
 /* ============================================================
  * ASCII importer — the inverse of export.ts. Parses boxes,
@@ -402,18 +402,35 @@ export function parseAscii(text: string): Shape[] {
     let box1 = attachedBox(tx, ty);
     if (box1 != null && box1 === box2) box1 = null;
     const a: ArrowShape = { type: 'arrow', id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
-    // Side pins: when the drawn anchor side differs from what the router
-    // would auto-pick, preserve the author's routing intent (no text syntax).
+    // Side pins: preserve the author's routing intent (no text syntax).
+    // A pin is inferred when the drawn anchor side differs from what the
+    // router would auto-pick; the exact offset is kept when the drawn
+    // position differs from where the router would slide it.
     const boxById = (id: number | null) => (id != null ? boxes.find((b) => b.id === id) ?? null : null);
     const b1 = boxById(box1), b2 = boxById(box2);
     const center = (b: BoxShape): { x: number; y: number } => ({ x: b.x + (b.w >> 1), y: b.y + (b.h >> 1) });
+    const inferPin = (b: BoxShape, ax: number, ay: number, target: { x: number; y: number }): { side?: Side; at?: number } => {
+      const drawn = dropSide(b, ax, ay);
+      if (!drawn) return {};
+      const vertical = drawn === 'left' || drawn === 'right';
+      const lo = vertical ? b.y + 1 : b.x + 1;
+      const hi = vertical ? b.y + b.h - 2 : b.x + b.w - 2;
+      const cross = vertical ? ay : ax;
+      const auto = Math.min(hi, Math.max(lo, Math.round(vertical ? target.y : target.x)));
+      const sidePinned = drawn !== sideFor(b, target);
+      const atPinned = cross !== auto;
+      if (!sidePinned && !atPinned) return {};
+      return { side: drawn, at: atPinned ? cross - (vertical ? b.y : b.x) : undefined };
+    };
     if (b1) {
-      const drawn = dropSide(b1, tx, ty);
-      if (drawn && drawn !== sideFor(b1, b2 ? center(b2) : { x: hx, y: hy })) a.side1 = drawn;
+      const p = inferPin(b1, tx, ty, b2 ? center(b2) : { x: hx, y: hy });
+      if (p.side) a.side1 = p.side;
+      if (p.at != null) a.at1 = p.at;
     }
     if (b2) {
-      const drawn = dropSide(b2, hx, hy);
-      if (drawn && drawn !== sideFor(b2, b1 ? center(b1) : { x: tx, y: ty })) a.side2 = drawn;
+      const p = inferPin(b2, hx, hy, b1 ? center(b1) : { x: tx, y: ty });
+      if (p.side) a.side2 = p.side;
+      if (p.at != null) a.at2 = p.at;
     }
     if (label) a.text = label;
     if (dual) a.heads = 'both';

@@ -8,6 +8,12 @@ import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, Side, TextShape }
 import { hintText, setTool } from './ui';
 import { clamp, clone } from './util';
 
+
+/** Exact-pin offset along a side: rows for left/right, columns for top/bottom. */
+function pinAt(b: BoxShape, side: Side | undefined, cx: number, cy: number): number | undefined {
+  if (!side) return undefined;
+  return side === 'left' || side === 'right' ? cy - b.y : cx - b.x;
+}
 /* ============================================================
  * Pointer interactions: hit-testing, drag state machine, cursor.
  * ============================================================ */
@@ -110,8 +116,10 @@ function onMouseDown(e: MouseEvent): void {
       const id = uid();
       app.doc.shapes.push({
         type: 'arrow', id, x1: cx, y1: cy, x2: cx, y2: cy, box1: sel.id, box2: null,
-        // starting from a specific border side pins the source there
+        // starting from a specific border side pins the source there, at
+        // the exact clicked cell
         side1: dropSide(sel, cx, cy),
+        at1: pinAt(sel, dropSide(sel, cx, cy), cx, cy),
       });
       app.drag = { mode: 'create-arrow', id, snap: snapshot(), moved: false };
       render();
@@ -242,11 +250,13 @@ function onMouseMove(e: MouseEvent): void {
       s.y1 = cy;
       s.box1 = b && b.id !== s.box2 ? b.id : null;
       s.side1 = s.box1 != null && b ? dropSide(b, cx, cy) : undefined;
+      s.at1 = s.box1 != null && b ? pinAt(b, s.side1, cx, cy) : undefined;
     } else {
       s.x2 = cx;
       s.y2 = cy;
       s.box2 = b && b.id !== s.box1 ? b.id : null;
       s.side2 = s.box2 != null && b ? dropSide(b, cx, cy) : undefined;
+      s.at2 = s.box2 != null && b ? pinAt(b, s.side2, cx, cy) : undefined;
     }
   } else if (d.mode === 'create-box') {
     let s = d.id != null ? getShape(d.id) : null;
@@ -271,6 +281,7 @@ function onMouseMove(e: MouseEvent): void {
     s.y2 = cy;
     s.box2 = b && b.id !== s.box1 ? b.id : null;
     s.side2 = s.box2 != null && b ? dropSide(b, cx, cy) : undefined;
+    s.at2 = s.box2 != null && b ? pinAt(b, s.side2, cx, cy) : undefined;
   }
   render();
 }
@@ -373,6 +384,7 @@ function updateCursor(px: number, py: number, cx: number, cy: number): void {
 // clicks remember which side to pin the arrow's source on.
 let connectFrom: number | null = null;
 let connectSide: Side | undefined;
+let connectAt: number | undefined;
 
 function onContextMenu(e: MouseEvent): void {
   e.preventDefault();
@@ -384,6 +396,7 @@ function onContextMenu(e: MouseEvent): void {
   if (s && s.type === 'arrow') {
     connectFrom = null;
     connectSide = undefined;
+    connectAt = undefined;
     app.selection = new Set([s.id]);
     cycleArrowHeads();
     return;
@@ -400,10 +413,12 @@ function onContextMenu(e: MouseEvent): void {
         x2: s.x + (s.w >> 1), y2: s.y + (s.h >> 1),
         box1: from.id, box2: s.id,
         side1: connectSide, side2: dropSide(s, cx, cy),
+        at1: connectAt, at2: pinAt(s, dropSide(s, cx, cy), cx, cy),
       });
       pushUndo(snap);
       connectFrom = null;
       connectSide = undefined;
+      connectAt = undefined;
       app.selection = new Set([id]);
       save();
       render();
@@ -411,6 +426,7 @@ function onContextMenu(e: MouseEvent): void {
       // First right-click: remember the source and highlight it.
       connectFrom = s.id;
       connectSide = dropSide(s, cx, cy);
+      connectAt = pinAt(s, connectSide, cx, cy);
       app.selection = new Set([s.id]);
       render();
       document.querySelector('#hint')!.textContent =
@@ -433,10 +449,12 @@ function onContextMenu(e: MouseEvent): void {
       x2: b.x + (b.w >> 1), y2: b.y + (b.h >> 1),
       box1: from.id, box2: b.id,
       side1: connectFrom != null ? connectSide : undefined,
+      at1: connectFrom != null ? connectAt : undefined,
     });
     pushUndo(snap);
     connectFrom = null;
     connectSide = undefined;
+    connectAt = undefined;
     app.selection = new Set([b.id]);
     save();
     render();
@@ -445,6 +463,7 @@ function onContextMenu(e: MouseEvent): void {
   }
   connectFrom = null;
   connectSide = undefined;
+  connectAt = undefined;
 }
 
 export function initInteractions(): void {

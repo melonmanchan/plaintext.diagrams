@@ -431,6 +431,7 @@ function resolveArrow(a, shapes) {
     const vertical = side === "left" || side === "right";
     const cellOf = (t) => vertical ? clamp(Math.round(t.y), b.y + 1, b.y + b.h - 2) : clamp(Math.round(t.x), b.x + 1, b.x + b.w - 2);
     const cell = cellOf(o);
+    const pinnedCell = (at, t) => cellOf(at != null ? vertical ? { x: t.x, y: b.y + at } : { x: b.x + at, y: t.y } : t);
     const entries = [];
     for (const s of shapes) {
       if (s.type !== "arrow")
@@ -438,12 +439,12 @@ function resolveArrow(a, shapes) {
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if ((s.side1 ?? sideFor(b, t)) === side && cellOf(t) === cell)
+        if ((s.side1 ?? sideFor(b, t)) === side && pinnedCell(s.side1 != null ? s.at1 : undefined, t) === cell)
           entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if ((s.side2 ?? sideFor(b, t)) === side && cellOf(t) === cell)
+        if ((s.side2 ?? sideFor(b, t)) === side && pinnedCell(s.side2 != null ? s.at2 : undefined, t) === cell)
           entries.push({ id: s.id, which: 2 });
       }
     }
@@ -458,11 +459,17 @@ function resolveArrow(a, shapes) {
   let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
+  const pinTarget = (b, side, at, o) => {
+    if (at == null)
+      return o;
+    return side === "left" || side === "right" ? { x: o.x, y: b.y + at } : { x: b.x + at, y: o.y };
+  };
   if (b1) {
     const side = a.side1 ?? sideFor(b1, o1);
-    const { slot, off: off3 } = slotOn(b1, side, o1, 1);
+    const t = pinTarget(b1, side, a.side1 != null ? a.at1 : undefined, o1);
+    const { slot, off: off3 } = slotOn(b1, side, t, 1);
     off1 = off3;
-    const an = anchorFor(b1, o1, side, slot, off3);
+    const an = anchorFor(b1, t, side, slot, off3);
     p1 = { x: an.x, y: an.y };
     ax1 = an.axis;
     side1 = an.side;
@@ -471,9 +478,10 @@ function resolveArrow(a, shapes) {
   }
   if (b2) {
     const side = a.side2 ?? sideFor(b2, o2);
-    const { slot, off: off3 } = slotOn(b2, side, o2, 2);
+    const t = pinTarget(b2, side, a.side2 != null ? a.at2 : undefined, o2);
+    const { slot, off: off3 } = slotOn(b2, side, t, 2);
     off2 = off3;
-    const an = anchorFor(b2, o2, side, slot, off3);
+    const an = anchorFor(b2, t, side, slot, off3);
     p2 = { x: an.x, y: an.y };
     ax2 = an.axis;
     side2 = an.side;
@@ -684,6 +692,10 @@ function parseShapesJson(text) {
       for (const [k, v] of [["side1", a.side1], ["side2", a.side2]]) {
         if (v != null && !["left", "right", "top", "bottom"].includes(v))
           errors.push(`arrow ${a.id}: "${k}" must be left|right|top|bottom`);
+      }
+      for (const [k, v] of [["at1", a.at1], ["at2", a.at2]]) {
+        if (v != null && !num(v))
+          errors.push(`arrow ${a.id}: "${k}" must be a number`);
       }
       if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
         errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);

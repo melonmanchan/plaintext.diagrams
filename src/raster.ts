@@ -388,17 +388,22 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       ? clamp(Math.round(t.y), b.y + 1, b.y + b.h - 2)
       : clamp(Math.round(t.x), b.x + 1, b.x + b.w - 2);
     const cell = cellOf(o);
+    // A sibling's collision cell is its exact pin when it has one.
+    const pinnedCell = (at: number | undefined, t: Point): number =>
+      cellOf(at != null ? (vertical ? { x: t.x, y: b.y + at } : { x: b.x + at, y: t.y }) : t);
     const entries: { id: number; which: 1 | 2 }[] = [];
     for (const s of shapes) {
       if (s.type !== 'arrow') continue;
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if ((s.side1 ?? sideFor(b, t)) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 1 });
+        if ((s.side1 ?? sideFor(b, t)) === side && pinnedCell(s.side1 != null ? s.at1 : undefined, t) === cell)
+          entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if ((s.side2 ?? sideFor(b, t)) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 2 });
+        if ((s.side2 ?? sideFor(b, t)) === side && pinnedCell(s.side2 != null ? s.at2 : undefined, t) === cell)
+          entries.push({ id: s.id, which: 2 });
       }
     }
     if (entries.length <= 1) return { slot: 0, off: 0 };
@@ -414,18 +419,27 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
+  /** Exact pins replace the target-facing cross with the stored offset. */
+  const pinTarget = (b: BoxShape, side: Side, at: number | undefined, o: Point): Point => {
+    if (at == null) return o;
+    return side === 'left' || side === 'right'
+      ? { x: o.x, y: b.y + at }
+      : { x: b.x + at, y: o.y };
+  };
   if (b1) {
     const side = a.side1 ?? sideFor(b1, o1);
-    const { slot, off } = slotOn(b1, side, o1, 1);
+    const t = pinTarget(b1, side, a.side1 != null ? a.at1 : undefined, o1);
+    const { slot, off } = slotOn(b1, side, t, 1);
     off1 = off;
-    const an = anchorFor(b1, o1, side, slot, off);
+    const an = anchorFor(b1, t, side, slot, off);
     p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y;
   }
   if (b2) {
     const side = a.side2 ?? sideFor(b2, o2);
-    const { slot, off } = slotOn(b2, side, o2, 2);
+    const t = pinTarget(b2, side, a.side2 != null ? a.at2 : undefined, o2);
+    const { slot, off } = slotOn(b2, side, t, 2);
     off2 = off;
-    const an = anchorFor(b2, o2, side, slot, off);
+    const an = anchorFor(b2, t, side, slot, off);
     p2 = { x: an.x, y: an.y }; ax2 = an.axis; side2 = an.side; a.x2 = an.x; a.y2 = an.y;
   }
   // Mid-line spread offset: parallel Z-routes keep distinct mid-lines.
