@@ -439,12 +439,12 @@ function resolveArrow(a, shapes) {
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if ((s.side1 ?? sideFor(b, t)) === side && pinnedCell(s.side1 != null ? s.at1 : undefined, t) === cell)
+        if (((pinnable(b, s.side1) ? s.side1 : null) ?? sideFor(b, t)) === side && pinnedCell(pinnable(b, s.side1) ? s.at1 : undefined, t) === cell)
           entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if ((s.side2 ?? sideFor(b, t)) === side && pinnedCell(s.side2 != null ? s.at2 : undefined, t) === cell)
+        if (((pinnable(b, s.side2) ? s.side2 : null) ?? sideFor(b, t)) === side && pinnedCell(pinnable(b, s.side2) ? s.at2 : undefined, t) === cell)
           entries.push({ id: s.id, which: 2 });
       }
     }
@@ -459,14 +459,17 @@ function resolveArrow(a, shapes) {
   let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
+  const pinnable = (b, side) => side != null && (side === "left" ? b.x >= 1 : side === "top" ? b.y >= 1 : true);
+  const pin1 = b1 != null && pinnable(b1, a.side1);
+  const pin2 = b2 != null && pinnable(b2, a.side2);
   const pinTarget = (b, side, at, o) => {
     if (at == null)
       return o;
     return side === "left" || side === "right" ? { x: o.x, y: b.y + at } : { x: b.x + at, y: o.y };
   };
   if (b1) {
-    const side = a.side1 ?? sideFor(b1, o1);
-    const t = pinTarget(b1, side, a.side1 != null ? a.at1 : undefined, o1);
+    const side = pin1 ? a.side1 : sideFor(b1, o1);
+    const t = pinTarget(b1, side, pin1 ? a.at1 : undefined, o1);
     const { slot, off: off3 } = slotOn(b1, side, t, 1);
     off1 = off3;
     const an = anchorFor(b1, t, side, slot, off3);
@@ -477,8 +480,8 @@ function resolveArrow(a, shapes) {
     a.y1 = an.y;
   }
   if (b2) {
-    const side = a.side2 ?? sideFor(b2, o2);
-    const t = pinTarget(b2, side, a.side2 != null ? a.at2 : undefined, o2);
+    const side = pin2 ? a.side2 : sideFor(b2, o2);
+    const t = pinTarget(b2, side, pin2 ? a.at2 : undefined, o2);
     const { slot, off: off3 } = slotOn(b2, side, t, 2);
     off2 = off3;
     const an = anchorFor(b2, t, side, slot, off3);
@@ -550,7 +553,7 @@ function resolveArrow(a, shapes) {
     return t;
   };
   const routeAvoiding = () => {
-    const outPt = (p, side, k) => side === "right" ? { x: p.x + k, y: p.y } : side === "left" ? { x: p.x - k, y: p.y } : side === "bottom" ? { x: p.x, y: p.y + k } : side === "top" ? { x: p.x, y: p.y - k } : p;
+    const outPt = (p, side, k) => side === "right" ? { x: p.x + k, y: p.y } : side === "left" ? { x: Math.max(0, p.x - k), y: p.y } : side === "bottom" ? { x: p.x, y: p.y + k } : side === "top" ? { x: p.x, y: Math.max(0, p.y - k) } : p;
     const e1 = outPt(p1, side1, 2 + Math.abs(off1));
     const e2 = outPt(p2, side2, 2 + Math.abs(off2));
     const candidates = [
@@ -561,9 +564,9 @@ function resolveArrow(a, shapes) {
     const spanY1 = Math.min(p1.y, p2.y) - 4, spanY2 = Math.max(p1.y, p2.y) + 4;
     const bs = [b1, b2, ...obstacles.filter((o) => o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1)].filter((b) => b != null);
     if (bs.length) {
-      const minX = Math.min(...bs.map((b) => b.x)) - 2;
+      const minX = Math.max(0, Math.min(...bs.map((b) => b.x)) - 2);
       const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
-      const minY = Math.min(...bs.map((b) => b.y)) - 2;
+      const minY = Math.max(0, Math.min(...bs.map((b) => b.y)) - 2);
       const maxY = Math.max(...bs.map((b) => b.y + b.h - 1)) + 2;
       for (const cx of [minX, maxX])
         candidates.push([p1, e1, { x: cx, y: e1.y }, { x: cx, y: e2.y }, e2, p2]);
@@ -591,7 +594,7 @@ function resolveArrow(a, shapes) {
       into2: side2 ? INTO_HEAD[side2] : null
     };
   };
-  if (a.side1 != null && b1 || a.side2 != null && b2)
+  if (pin1 || pin2)
     return finalize(routeAvoiding());
   let pts;
   if (ax1 === "h" && ax2 === "h") {

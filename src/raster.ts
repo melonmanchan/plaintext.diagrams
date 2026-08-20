@@ -397,12 +397,14 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if ((s.side1 ?? sideFor(b, t)) === side && pinnedCell(s.side1 != null ? s.at1 : undefined, t) === cell)
+        if (((pinnable(b, s.side1) ? s.side1 : null) ?? sideFor(b, t)) === side &&
+            pinnedCell(pinnable(b, s.side1) ? s.at1 : undefined, t) === cell)
           entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if ((s.side2 ?? sideFor(b, t)) === side && pinnedCell(s.side2 != null ? s.at2 : undefined, t) === cell)
+        if (((pinnable(b, s.side2) ? s.side2 : null) ?? sideFor(b, t)) === side &&
+            pinnedCell(pinnable(b, s.side2) ? s.at2 : undefined, t) === cell)
           entries.push({ id: s.id, which: 2 });
       }
     }
@@ -419,6 +421,16 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
+  /**
+   * A pin is only honored while its side is physically anchorable — a box
+   * flush against the canvas's left/top edge has no room for a left/top
+   * anchor (x/y = −1). Invalid pins are ignored (auto), not destroyed:
+   * they re-activate when the box moves back in.
+   */
+  const pinnable = (b: BoxShape, side: Side | undefined | null): side is Side =>
+    side != null && (side === 'left' ? b.x >= 1 : side === 'top' ? b.y >= 1 : true);
+  const pin1 = b1 != null && pinnable(b1, a.side1);
+  const pin2 = b2 != null && pinnable(b2, a.side2);
   /** Exact pins replace the target-facing cross with the stored offset. */
   const pinTarget = (b: BoxShape, side: Side, at: number | undefined, o: Point): Point => {
     if (at == null) return o;
@@ -427,16 +439,16 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       : { x: b.x + at, y: o.y };
   };
   if (b1) {
-    const side = a.side1 ?? sideFor(b1, o1);
-    const t = pinTarget(b1, side, a.side1 != null ? a.at1 : undefined, o1);
+    const side = pin1 ? a.side1! : sideFor(b1, o1);
+    const t = pinTarget(b1, side, pin1 ? a.at1 : undefined, o1);
     const { slot, off } = slotOn(b1, side, t, 1);
     off1 = off;
     const an = anchorFor(b1, t, side, slot, off);
     p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y;
   }
   if (b2) {
-    const side = a.side2 ?? sideFor(b2, o2);
-    const t = pinTarget(b2, side, a.side2 != null ? a.at2 : undefined, o2);
+    const side = pin2 ? a.side2! : sideFor(b2, o2);
+    const t = pinTarget(b2, side, pin2 ? a.at2 : undefined, o2);
     const { slot, off } = slotOn(b2, side, t, 2);
     off2 = off;
     const an = anchorFor(b2, t, side, slot, off);
@@ -498,9 +510,9 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   const routeAvoiding = (): Point[] => {
     const outPt = (p: Point, side: Side | null, k: number): Point =>
       side === 'right' ? { x: p.x + k, y: p.y }
-      : side === 'left' ? { x: p.x - k, y: p.y }
+      : side === 'left' ? { x: Math.max(0, p.x - k), y: p.y }
       : side === 'bottom' ? { x: p.x, y: p.y + k }
-      : side === 'top' ? { x: p.x, y: p.y - k }
+      : side === 'top' ? { x: p.x, y: Math.max(0, p.y - k) }
       : p;
     const e1 = outPt(p1, side1, 2 + Math.abs(off1));
     const e2 = outPt(p2, side2, 2 + Math.abs(off2));
@@ -516,9 +528,9 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1,
     )].filter((b): b is BoxShape => b != null);
     if (bs.length) {
-      const minX = Math.min(...bs.map((b) => b.x)) - 2;
+      const minX = Math.max(0, Math.min(...bs.map((b) => b.x)) - 2);
       const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
-      const minY = Math.min(...bs.map((b) => b.y)) - 2;
+      const minY = Math.max(0, Math.min(...bs.map((b) => b.y)) - 2);
       const maxY = Math.max(...bs.map((b) => b.y + b.h - 1)) + 2;
       for (const cx of [minX, maxX])
         candidates.push([p1, e1, { x: cx, y: e1.y }, { x: cx, y: e2.y }, e2, p2]);
@@ -550,7 +562,7 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   // Pinned sides can face AWAY from the other endpoint; the legacy branches
   // below assume facing anchors — pinned arrows always take the avoiding
   // stub router.
-  if ((a.side1 != null && b1) || (a.side2 != null && b2)) return finalize(routeAvoiding());
+  if (pin1 || pin2) return finalize(routeAvoiding());
 
   let pts: Point[];
   if (ax1 === 'h' && ax2 === 'h') {

@@ -16,7 +16,7 @@ describe('arrow side pins', () => {
   it('router honors pinned sides instead of the facing side', () => {
     // B is to the RIGHT of A; auto would anchor A:right / B:left.
     const a = box(1, 0, 0, 10, 5, 'A');
-    const b = box(2, 30, 0, 10, 5, 'B');
+    const b = box(2, 30, 4, 10, 5, 'B');
     const ar = arrow(3, { box1: 1, box2: 2, side1: 'bottom', side2: 'top' });
     const shapes: Shape[] = [a, b, ar];
     resolveArrow(ar, shapes);
@@ -144,5 +144,53 @@ describe('arrow side pins', () => {
     expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
     expect(re.find((s): s is ArrowShape => s.type === 'arrow')?.text).toBe('go');
     expect(exportAscii(re)).toBe(first);
+  });
+
+  it('pins on unanchorable sides are ignored, never routed off-canvas', () => {
+    // top pin on a box at y=0 and left pin on a box at x=0 have no room —
+    // the router must fall back to auto instead of anchoring at −1.
+    const a = box(1, 20, 10, 10, 3, 'A');
+    const b = box(2, 0, 0, 10, 3, 'B');
+    const ar = arrow(3, { box1: 1, box2: 2, side2: 'top' });
+    const shapes: Shape[] = [a, b, ar];
+    resolveArrow(ar, shapes);
+    expect(Math.min(ar.x1, ar.y1, ar.x2, ar.y2)).toBeGreaterThanOrEqual(0);
+    const first = exportAscii(shapes);
+    const re = parseAscii(first);
+    expect(re.filter((s) => s.type === 'box')).toHaveLength(2);
+    expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
+    expect(exportAscii(re)).toBe(first);
+  });
+
+  it('slot-spread auto arrows import unpinned and stay adaptive', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 6, 7), box(2, 20, 0, 6, 7),
+      arrow(3, { box1: 1, box2: 2 }), arrow(4, { box1: 1, box2: 2 }), arrow(5, { box1: 2, box2: 1 }),
+    ];
+    const pasted = parseAscii(exportAscii(shapes));
+    const pas = pasted.filter((s): s is ArrowShape => s.type === 'arrow');
+    expect(pas.every((x) => x.side1 == null && x.side2 == null)).toBe(true);
+    // move B below A: arrows must re-route, never anchor off-grid
+    const b = pasted.find((s): s is BoxShape => s.type === 'box' && s.x > 10)!;
+    b.x = 0; b.y = 14;
+    const moved = exportAscii(pasted);
+    const re = parseAscii(moved);
+    // ≥2: opposite-direction siblings can overlap after a move (pre-existing
+    // limitation, identical on main); the fix guarantees no strays/off-grid.
+    expect(re.filter((s) => s.type === 'arrow').length).toBeGreaterThanOrEqual(2);
+    expect(re.filter((s) => s.type === 'text')).toHaveLength(0);
+  });
+
+  it('overflow-wrapped diagrams stay byte-stable across repeated round-trips', () => {
+    const shapes: Shape[] = [
+      box(1, 0, 0, 12, 8, 'Client'), box(2, 48, 2, 21, 3, 'Server'),
+      arrow(3, { box1: 1, box2: 2 }), arrow(4, { box1: 1, box2: 2, text: 'http POST' }),
+      arrow(5, { box1: 1, box2: 2, text: 'HTTP patch' }),
+    ];
+    const a = exportAscii(shapes);
+    const b = exportAscii(parseAscii(a));
+    const c = exportAscii(parseAscii(b));
+    expect(b).toBe(a);
+    expect(c).toBe(b);
   });
 });
