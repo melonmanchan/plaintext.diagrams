@@ -1,5 +1,5 @@
 import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
-import type { BoxShape, Corner, GroupShape, Guide, LaneSlot, Shape } from './types';
+import type { BoxShape, Corner, GroupShape, Guide, LaneSlot, Shape, Side } from './types';
 import { clamp } from './util';
 
 /* ============================================================
@@ -109,6 +109,19 @@ export function laneBounds(g: GroupShape): number[] {
   const n = g.lanes?.length ?? 0;
   if (n < 2) return [];
   return Array.from({ length: n - 1 }, (_, i) => g.x + Math.round(((i + 1) * (g.w - 1)) / n));
+}
+
+/**
+ * Which border side of `b` the cell (cx, cy) belongs to — for pinning an
+ * arrow endpoint from a drag/drop position. Interior cells and diagonal
+ * corner zones return undefined (= auto).
+ */
+export function dropSide(b: BoxShape, cx: number, cy: number): Side | undefined {
+  const sx = cx <= b.x ? 'left' : cx >= b.x + b.w - 1 ? 'right' : null;
+  const sy = cy <= b.y ? 'top' : cy >= b.y + b.h - 1 ? 'bottom' : null;
+  if (sx && !sy) return sx;
+  if (sy && !sx) return sy;
+  return undefined;
 }
 
 /** Lane interiors as [start, end] column pairs; a laneless group is one lane. */

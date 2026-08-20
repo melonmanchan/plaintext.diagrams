@@ -85,6 +85,13 @@ export function parseShapesJson(text: string): ParsedShapes | null {
         if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === 'box'))
           errors.push(`arrow ${a.id} references box id ${ref}, which does not exist`);
       }
+      for (const [k, v] of [['side1', a.side1], ['side2', a.side2]] as const) {
+        if (v != null && !['left', 'right', 'top', 'bottom'].includes(v))
+          errors.push(`arrow ${a.id}: "${k}" must be left|right|top|bottom`);
+      }
+      for (const [k, v] of [['at1', a.at1], ['at2', a.at2]] as const) {
+        if (v != null && !num(v)) errors.push(`arrow ${a.id}: "${k}" must be a number`);
+      }
       if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
         errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);
     } else {

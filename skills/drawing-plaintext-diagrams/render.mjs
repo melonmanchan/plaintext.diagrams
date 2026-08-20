@@ -431,6 +431,7 @@ function resolveArrow(a, shapes) {
     const vertical = side === "left" || side === "right";
     const cellOf = (t) => vertical ? clamp(Math.round(t.y), b.y + 1, b.y + b.h - 2) : clamp(Math.round(t.x), b.x + 1, b.x + b.w - 2);
     const cell = cellOf(o);
+    const pinnedCell = (at, t) => cellOf(at != null ? vertical ? { x: t.x, y: b.y + at } : { x: b.x + at, y: t.y } : t);
     const entries = [];
     for (const s of shapes) {
       if (s.type !== "arrow")
@@ -438,12 +439,12 @@ function resolveArrow(a, shapes) {
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if (sideFor(b, t) === side && cellOf(t) === cell)
+        if (((pinnable(b, s.side1) ? s.side1 : null) ?? sideFor(b, t)) === side && pinnedCell(pinnable(b, s.side1) ? s.at1 : undefined, t) === cell)
           entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if (sideFor(b, t) === side && cellOf(t) === cell)
+        if (((pinnable(b, s.side2) ? s.side2 : null) ?? sideFor(b, t)) === side && pinnedCell(pinnable(b, s.side2) ? s.at2 : undefined, t) === cell)
           entries.push({ id: s.id, which: 2 });
       }
     }
@@ -458,11 +459,20 @@ function resolveArrow(a, shapes) {
   let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
+  const pinnable = (b, side) => side != null && (side === "left" ? b.x >= 1 : side === "top" ? b.y >= 1 : true);
+  const pin1 = b1 != null && pinnable(b1, a.side1);
+  const pin2 = b2 != null && pinnable(b2, a.side2);
+  const pinTarget = (b, side, at, o) => {
+    if (at == null)
+      return o;
+    return side === "left" || side === "right" ? { x: o.x, y: b.y + at } : { x: b.x + at, y: o.y };
+  };
   if (b1) {
-    const side = sideFor(b1, o1);
-    const { slot, off: off3 } = slotOn(b1, side, o1, 1);
+    const side = pin1 ? a.side1 : sideFor(b1, o1);
+    const t = pinTarget(b1, side, pin1 ? a.at1 : undefined, o1);
+    const { slot, off: off3 } = slotOn(b1, side, t, 1);
     off1 = off3;
-    const an = anchorFor(b1, o1, side, slot, off3);
+    const an = anchorFor(b1, t, side, slot, off3);
     p1 = { x: an.x, y: an.y };
     ax1 = an.axis;
     side1 = an.side;
@@ -470,10 +480,11 @@ function resolveArrow(a, shapes) {
     a.y1 = an.y;
   }
   if (b2) {
-    const side = sideFor(b2, o2);
-    const { slot, off: off3 } = slotOn(b2, side, o2, 2);
+    const side = pin2 ? a.side2 : sideFor(b2, o2);
+    const t = pinTarget(b2, side, pin2 ? a.at2 : undefined, o2);
+    const { slot, off: off3 } = slotOn(b2, side, t, 2);
     off2 = off3;
-    const an = anchorFor(b2, o2, side, slot, off3);
+    const an = anchorFor(b2, t, side, slot, off3);
     p2 = { x: an.x, y: an.y };
     ax2 = an.axis;
     side2 = an.side;
@@ -516,6 +527,75 @@ function resolveArrow(a, shapes) {
   } else if (!ax1 && ax2) {
     ax1 = ax2 === "h" ? dy === 0 ? "h" : "v" : dx === 0 ? "v" : "h";
   }
+  const obstacles = shapes.filter((s) => s.type === "box" && s !== b1 && s !== b2);
+  const hitsBox = (u, v, b) => {
+    if (!b)
+      return false;
+    return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 && Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
+  };
+  const segsClean = (pts2) => {
+    for (let i = 0;i < pts2.length - 1; i++) {
+      const u = pts2[i], v = pts2[i + 1];
+      if (i > 0 && hitsBox(u, v, b1))
+        return false;
+      if (i < pts2.length - 2 && hitsBox(u, v, b2))
+        return false;
+      for (const ob of obstacles)
+        if (hitsBox(u, v, ob))
+          return false;
+    }
+    return true;
+  };
+  const pathLen = (pts2) => {
+    let t = 0;
+    for (let i = 0;i < pts2.length - 1; i++)
+      t += Math.abs(pts2[i + 1].x - pts2[i].x) + Math.abs(pts2[i + 1].y - pts2[i].y);
+    return t;
+  };
+  const routeAvoiding = () => {
+    const outPt = (p, side, k) => side === "right" ? { x: p.x + k, y: p.y } : side === "left" ? { x: Math.max(0, p.x - k), y: p.y } : side === "bottom" ? { x: p.x, y: p.y + k } : side === "top" ? { x: p.x, y: Math.max(0, p.y - k) } : p;
+    const e1 = outPt(p1, side1, 2 + Math.abs(off1));
+    const e2 = outPt(p2, side2, 2 + Math.abs(off2));
+    const candidates = [
+      [p1, e1, { x: e2.x, y: e1.y }, e2, p2],
+      [p1, e1, { x: e1.x, y: e2.y }, e2, p2]
+    ];
+    const spanX1 = Math.min(p1.x, p2.x) - 4, spanX2 = Math.max(p1.x, p2.x) + 4;
+    const spanY1 = Math.min(p1.y, p2.y) - 4, spanY2 = Math.max(p1.y, p2.y) + 4;
+    const bs = [b1, b2, ...obstacles.filter((o) => o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1)].filter((b) => b != null);
+    if (bs.length) {
+      const minX = Math.max(0, Math.min(...bs.map((b) => b.x)) - 2);
+      const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
+      const minY = Math.max(0, Math.min(...bs.map((b) => b.y)) - 2);
+      const maxY = Math.max(...bs.map((b) => b.y + b.h - 1)) + 2;
+      for (const cx of [minX, maxX])
+        candidates.push([p1, e1, { x: cx, y: e1.y }, { x: cx, y: e2.y }, e2, p2]);
+      for (const cy of [minY, maxY])
+        candidates.push([p1, e1, { x: e1.x, y: cy }, { x: e2.x, y: cy }, e2, p2]);
+    }
+    const usable = candidates.filter(segsClean);
+    return (usable.length ? usable : candidates).reduce((best, c) => pathLen(c) < pathLen(best) ? c : best);
+  };
+  const finalize = (route) => {
+    const out2 = [route[0]];
+    for (let i = 1;i < route.length; i++) {
+      const last = out2[out2.length - 1];
+      if (route[i].x !== last.x || route[i].y !== last.y)
+        out2.push(route[i]);
+    }
+    for (let i = out2.length - 2;i > 0; i--) {
+      const a0 = out2[i - 1], m = out2[i], b0 = out2[i + 1];
+      if (a0.x === m.x && m.x === b0.x || a0.y === m.y && m.y === b0.y)
+        out2.splice(i, 1);
+    }
+    return {
+      pts: out2,
+      into1: side1 ? INTO_HEAD[side1] : null,
+      into2: side2 ? INTO_HEAD[side2] : null
+    };
+  };
+  if (pin1 || pin2)
+    return finalize(routeAvoiding());
   let pts;
   if (ax1 === "h" && ax2 === "h") {
     if (dy === 0 && !(side1 != null && side1 === side2))
@@ -550,6 +630,8 @@ function resolveArrow(a, shapes) {
       pts = [p1, { x: p1.x, y: p2.y }, p2];
     }
   }
+  if ((b1 || b2) && !segsClean(pts))
+    return finalize(routeAvoiding());
   const out = [pts[0]];
   for (let i = 1;i < pts.length; i++) {
     const last = out[out.length - 1];
@@ -657,6 +739,14 @@ function parseShapesJson(text) {
       for (const ref of [a.box1, a.box2]) {
         if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
           errors.push(`arrow ${a.id} references box id ${ref}, which does not exist`);
+      }
+      for (const [k, v] of [["side1", a.side1], ["side2", a.side2]]) {
+        if (v != null && !["left", "right", "top", "bottom"].includes(v))
+          errors.push(`arrow ${a.id}: "${k}" must be left|right|top|bottom`);
+      }
+      for (const [k, v] of [["at1", a.at1], ["at2", a.at2]]) {
+        if (v != null && !num(v))
+          errors.push(`arrow ${a.id}: "${k}" must be a number`);
       }
       if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
         errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);

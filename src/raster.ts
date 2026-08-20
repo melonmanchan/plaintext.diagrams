@@ -1,5 +1,5 @@
 import { COLS, PRI, ROWS } from './constants';
-import type { ArrowShape, BoxShape, GroupShape, Point, Put, Raster, Shape, TextShape } from './types';
+import type { ArrowShape, BoxShape, GroupShape, Point, Put, Raster, Shape, Side, TextShape } from './types';
 import { clamp } from './util';
 import { laneBounds } from './shapes';
 
@@ -310,7 +310,7 @@ export function pathMidpoint(pts: Point[]): Point {
   return pts[0];
 }
 
-type Side = 'left' | 'right' | 'top' | 'bottom';
+
 
 /** Cell just OUTSIDE a given border side, at `cross` along it (clamped). */
 function anchorOn(b: BoxShape, side: Side, cross: number): { x: number; y: number; axis: 'h' | 'v' } {
@@ -326,7 +326,7 @@ function anchorOn(b: BoxShape, side: Side, cross: number): { x: number; y: numbe
  * Once that side is full, remaining arrows wrap onto the two
  * perpendicular sides.
  */
-function sideFor(b: BoxShape, o: Point): Side {
+export function sideFor(b: BoxShape, o: Point): Side {
   const cx = b.x + (b.w - 1) / 2, cy = b.y + (b.h - 1) / 2;
   const ndx = (o.x - cx) / Math.max(1, b.w / 2);
   const ndy = (o.y - cy) / Math.max(1, b.h / 2);
@@ -388,17 +388,24 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       ? clamp(Math.round(t.y), b.y + 1, b.y + b.h - 2)
       : clamp(Math.round(t.x), b.x + 1, b.x + b.w - 2);
     const cell = cellOf(o);
+    // A sibling's collision cell is its exact pin when it has one.
+    const pinnedCell = (at: number | undefined, t: Point): number =>
+      cellOf(at != null ? (vertical ? { x: t.x, y: b.y + at } : { x: b.x + at, y: t.y }) : t);
     const entries: { id: number; which: 1 | 2 }[] = [];
     for (const s of shapes) {
       if (s.type !== 'arrow') continue;
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if (sideFor(b, t) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 1 });
+        if (((pinnable(b, s.side1) ? s.side1 : null) ?? sideFor(b, t)) === side &&
+            pinnedCell(pinnable(b, s.side1) ? s.at1 : undefined, t) === cell)
+          entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if (sideFor(b, t) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 2 });
+        if (((pinnable(b, s.side2) ? s.side2 : null) ?? sideFor(b, t)) === side &&
+            pinnedCell(pinnable(b, s.side2) ? s.at2 : undefined, t) === cell)
+          entries.push({ id: s.id, which: 2 });
       }
     }
     if (entries.length <= 1) return { slot: 0, off: 0 };
@@ -414,18 +421,37 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   let off1 = 0, off2 = 0;
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
+  /**
+   * A pin is only honored while its side is physically anchorable — a box
+   * flush against the canvas's left/top edge has no room for a left/top
+   * anchor (x/y = −1). Invalid pins are ignored (auto), not destroyed:
+   * they re-activate when the box moves back in.
+   */
+  const pinnable = (b: BoxShape, side: Side | undefined | null): side is Side =>
+    side != null && (side === 'left' ? b.x >= 1 : side === 'top' ? b.y >= 1 : true);
+  const pin1 = b1 != null && pinnable(b1, a.side1);
+  const pin2 = b2 != null && pinnable(b2, a.side2);
+  /** Exact pins replace the target-facing cross with the stored offset. */
+  const pinTarget = (b: BoxShape, side: Side, at: number | undefined, o: Point): Point => {
+    if (at == null) return o;
+    return side === 'left' || side === 'right'
+      ? { x: o.x, y: b.y + at }
+      : { x: b.x + at, y: o.y };
+  };
   if (b1) {
-    const side = sideFor(b1, o1);
-    const { slot, off } = slotOn(b1, side, o1, 1);
+    const side = pin1 ? a.side1! : sideFor(b1, o1);
+    const t = pinTarget(b1, side, pin1 ? a.at1 : undefined, o1);
+    const { slot, off } = slotOn(b1, side, t, 1);
     off1 = off;
-    const an = anchorFor(b1, o1, side, slot, off);
+    const an = anchorFor(b1, t, side, slot, off);
     p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y;
   }
   if (b2) {
-    const side = sideFor(b2, o2);
-    const { slot, off } = slotOn(b2, side, o2, 2);
+    const side = pin2 ? a.side2! : sideFor(b2, o2);
+    const t = pinTarget(b2, side, pin2 ? a.at2 : undefined, o2);
+    const { slot, off } = slotOn(b2, side, t, 2);
     off2 = off;
-    const an = anchorFor(b2, o2, side, slot, off);
+    const an = anchorFor(b2, t, side, slot, off);
     p2 = { x: an.x, y: an.y }; ax2 = an.axis; side2 = an.side; a.x2 = an.x; a.y2 = an.y;
   }
   // Mid-line spread offset: parallel Z-routes keep distinct mid-lines.
@@ -452,6 +478,91 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   } else if (!ax1 && ax2) {
     ax1 = ax2 === 'h' ? (dy === 0 ? 'h' : 'v') : (dx === 0 ? 'v' : 'h');
   }
+
+  // ---- shared route-avoidance machinery ------------------------------
+  // Cleanliness: no segment overlaps ANY box. The segments adjacent to an
+  // attached anchor are exempt for their own box (they must touch it), and
+  // outward stubs are safe by construction.
+  const obstacles = shapes.filter(
+    (s): s is BoxShape => s.type === 'box' && s !== b1 && s !== b2,
+  );
+  const hitsBox = (u: Point, v: Point, b: BoxShape | null): boolean => {
+    if (!b) return false;
+    return Math.max(u.x, v.x) >= b.x && Math.min(u.x, v.x) <= b.x + b.w - 1 &&
+           Math.max(u.y, v.y) >= b.y && Math.min(u.y, v.y) <= b.y + b.h - 1;
+  };
+  const segsClean = (pts: Point[]): boolean => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const u = pts[i], v = pts[i + 1];
+      if (i > 0 && hitsBox(u, v, b1)) return false;
+      if (i < pts.length - 2 && hitsBox(u, v, b2)) return false;
+      for (const ob of obstacles) if (hitsBox(u, v, ob)) return false;
+    }
+    return true;
+  };
+  const pathLen = (pts: Point[]): number => {
+    let t = 0;
+    for (let i = 0; i < pts.length - 1; i++)
+      t += Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
+    return t;
+  };
+  /** Escape-stub routing: shortest candidate whose segments cross no box. */
+  const routeAvoiding = (): Point[] => {
+    const outPt = (p: Point, side: Side | null, k: number): Point =>
+      side === 'right' ? { x: p.x + k, y: p.y }
+      : side === 'left' ? { x: Math.max(0, p.x - k), y: p.y }
+      : side === 'bottom' ? { x: p.x, y: p.y + k }
+      : side === 'top' ? { x: p.x, y: Math.max(0, p.y - k) }
+      : p;
+    const e1 = outPt(p1, side1, 2 + Math.abs(off1));
+    const e2 = outPt(p2, side2, 2 + Math.abs(off2));
+    const candidates: Point[][] = [
+      [p1, e1, { x: e2.x, y: e1.y }, e2, p2],
+      [p1, e1, { x: e1.x, y: e2.y }, e2, p2],
+    ];
+    // Corridors around the union of the endpoint boxes and any obstacle
+    // near the direct span, for when both simple bends collide.
+    const spanX1 = Math.min(p1.x, p2.x) - 4, spanX2 = Math.max(p1.x, p2.x) + 4;
+    const spanY1 = Math.min(p1.y, p2.y) - 4, spanY2 = Math.max(p1.y, p2.y) + 4;
+    const bs = [b1, b2, ...obstacles.filter((o) =>
+      o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1,
+    )].filter((b): b is BoxShape => b != null);
+    if (bs.length) {
+      const minX = Math.max(0, Math.min(...bs.map((b) => b.x)) - 2);
+      const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
+      const minY = Math.max(0, Math.min(...bs.map((b) => b.y)) - 2);
+      const maxY = Math.max(...bs.map((b) => b.y + b.h - 1)) + 2;
+      for (const cx of [minX, maxX])
+        candidates.push([p1, e1, { x: cx, y: e1.y }, { x: cx, y: e2.y }, e2, p2]);
+      for (const cy of [minY, maxY])
+        candidates.push([p1, e1, { x: e1.x, y: cy }, { x: e2.x, y: cy }, e2, p2]);
+    }
+    const usable = candidates.filter(segsClean);
+    return (usable.length ? usable : candidates)
+      .reduce((best, c) => (pathLen(c) < pathLen(best) ? c : best));
+  };
+  const finalize = (route: Point[]): ResolvedArrow => {
+    const out: Point[] = [route[0]];
+    for (let i = 1; i < route.length; i++) {
+      const last = out[out.length - 1];
+      if (route[i].x !== last.x || route[i].y !== last.y) out.push(route[i]);
+    }
+    // drop collinear middle points so straight runs stay single segments
+    for (let i = out.length - 2; i > 0; i--) {
+      const a0 = out[i - 1], m = out[i], b0 = out[i + 1];
+      if ((a0.x === m.x && m.x === b0.x) || (a0.y === m.y && m.y === b0.y)) out.splice(i, 1);
+    }
+    return {
+      pts: out,
+      into1: side1 ? INTO_HEAD[side1] : null,
+      into2: side2 ? INTO_HEAD[side2] : null,
+    };
+  };
+
+  // Pinned sides can face AWAY from the other endpoint; the legacy branches
+  // below assume facing anchors — pinned arrows always take the avoiding
+  // stub router.
+  if (pin1 || pin2) return finalize(routeAvoiding());
 
   let pts: Point[];
   if (ax1 === 'h' && ax2 === 'h') {
@@ -500,6 +611,10 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       pts = [p1, { x: p1.x, y: p2.y }, p2];
     }
   }
+
+  // Legacy routes stay exactly as they are when clean; only routes that
+  // overdraw a box (endpoint or bystander) take the avoiding router.
+  if ((b1 || b2) && !segsClean(pts)) return finalize(routeAvoiding());
 
   const out: Point[] = [pts[0]];
   for (let i = 1; i < pts.length; i++) {

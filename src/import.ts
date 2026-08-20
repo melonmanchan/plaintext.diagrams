@@ -1,4 +1,6 @@
-import type { ArrowShape, BoxShape, GroupShape, Shape, TextShape } from './types';
+import { resolveArrow } from './raster';
+import { dropSide } from './shapes';
+import type { ArrowShape, BoxShape, GroupShape, Shape, Side, TextShape } from './types';
 
 /* ============================================================
  * ASCII importer — the inverse of export.ts. Parses boxes,
@@ -474,5 +476,61 @@ export function parseAscii(text: string): Shape[] {
     }
   }
 
-  return [...groups, ...boxes, ...arrows, ...texts];
+  /* ---------- side pins: reconcile drawn anchors with the auto router ----- */
+  // Simulate a pin-free re-render of the parsed document. An endpoint gets
+  // a pin ONLY when the auto router (slot spreading included) would NOT
+  // reproduce its drawn anchor — so adaptive auto arrows stay adaptive
+  // while intentional geometry (author pins) survives byte-identically.
+  // Second pass: pins assigned in pass one can shift siblings' slots, so
+  // reconcile once more against the updated simulation.
+  const drawn = arrows.map((a) => ({ x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 }));
+  const result: Shape[] = [...groups, ...boxes, ...arrows, ...texts];
+  for (let pass = 0; pass < 2; pass++) {
+    const sim = result.map((s) => JSON.parse(JSON.stringify(s)) as Shape);
+    const simArrows = sim.filter((s): s is ArrowShape => s.type === 'arrow');
+    for (const sa of simArrows) resolveArrow(sa, sim);
+    // Arrows with identical render-relevant attributes are interchangeable:
+    // if a signature group's simulated anchors are a permutation of its
+    // drawn anchors, the re-render is byte-identical — skip pinning it.
+    const signature = (x: ArrowShape): string =>
+      `${x.box1}|${x.box2}|${x.text ?? ''}|${x.style ?? ''}|${x.heads ?? ''}`;
+    const groupsBySig = new Map<string, number[]>();
+    arrows.forEach((x, i) => {
+      const k = signature(x);
+      groupsBySig.set(k, [...(groupsBySig.get(k) ?? []), i]);
+    });
+    const exempt = new Set<number>();
+    for (const idxs of groupsBySig.values()) {
+      if (idxs.length < 2) continue;
+      const key = (p: { x1: number; y1: number; x2: number; y2: number }) => `${p.x1},${p.y1},${p.x2},${p.y2}`;
+      const drawnSet = idxs.map((i) => key(drawn[i])).sort().join(';');
+      const simSet = idxs.map((i) => key(simArrows[i])).sort().join(';');
+      if (drawnSet === simSet) for (const i of idxs) exempt.add(i);
+    }
+    let changed = false;
+    arrows.forEach((a, i) => {
+      const sa = simArrows[i], d = drawn[i];
+      const isExempt = exempt.has(i);
+      const pinEnd = (which: 1 | 2): void => {
+        const boxId = which === 1 ? a.box1 : a.box2;
+        if (isExempt || boxId == null || (which === 1 ? a.side1 : a.side2) != null) return;
+        const b = boxes.find((bb) => bb.id === boxId);
+        if (!b) return;
+        const dx = which === 1 ? d.x1 : d.x2, dy = which === 1 ? d.y1 : d.y2;
+        if ((which === 1 ? sa.x1 === dx && sa.y1 === dy : sa.x2 === dx && sa.y2 === dy)) return;
+        const side = dropSide(b, dx, dy);
+        if (!side) return;
+        const at = side === 'left' || side === 'right' ? dy - b.y : dx - b.x;
+        if (which === 1) { a.side1 = side; a.at1 = at; } else { a.side2 = side; a.at2 = at; }
+        changed = true;
+      };
+      pinEnd(1);
+      pinEnd(2);
+      // the simulation must not overwrite the drawn coordinates
+      a.x1 = d.x1; a.y1 = d.y1; a.x2 = d.x2; a.y2 = d.y2;
+    });
+    if (!changed) break;
+  }
+
+  return result;
 }

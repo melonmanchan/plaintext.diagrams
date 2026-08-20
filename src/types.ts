@@ -32,6 +32,9 @@ export interface TextShape {
   text: string;
 }
 
+/** A box border side; used for arrow anchoring. */
+export type Side = 'left' | 'right' | 'top' | 'bottom';
+
 export interface ArrowShape {
   type: 'arrow';
   id: number;
@@ -47,6 +50,16 @@ export interface ArrowShape {
   heads?: 'end' | 'both' | 'start';
   /** Line style; absent means solid. */
   style?: 'dashed';
+  /** Pinned anchor sides per endpoint; absent means auto (router picks). */
+  side1?: Side;
+  side2?: Side;
+  /**
+   * Exact anchor offset along the pinned side, relative to the box origin
+   * (rows for left/right, columns for top/bottom). Only meaningful with
+   * the matching sideN; absent means the router slides toward the target.
+   */
+  at1?: number;
+  at2?: number;
 }
 
 export type Shape = BoxShape | GroupShape | ArrowShape | TextShape;
