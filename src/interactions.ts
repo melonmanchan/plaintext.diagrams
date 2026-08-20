@@ -2,7 +2,7 @@ import { CH, CW, MAX_COLS, MAX_ROWS } from './constants';
 import { cycleArrowHeads } from './commands';
 import { commitEdit, startEdit } from './editor';
 import { render } from './render';
-import { applyGroupSlots, boxAt, boxAttachAt, boxHandles, boxMinSize, captureGroupSlots, groupMinSize, groupTopRow, insideGroup, laneBounds, onBoxBorder, placeFrom, snapBox } from './shapes';
+import { applyGroupSlots, boxAt, boxAttachAt, boxHandles, boxMinSize, captureGroupSlots, dropSide, groupMinSize, groupTopRow, insideGroup, laneBounds, onBoxBorder, placeFrom, snapBox } from './shapes';
 import { app, getShape, pushUndo, save, snapshot, soleSel, uid } from './store';
 import type { ArrowShape, BoxShape, Corner, GroupShape, Shape, TextShape } from './types';
 import { hintText, setTool } from './ui';
@@ -108,7 +108,11 @@ function onMouseDown(e: MouseEvent): void {
     // Drag from a selected box's border starts a new arrow attached to it.
     if (sel && sel.type === 'box' && !e.shiftKey && onBoxBorder(sel, cx, cy)) {
       const id = uid();
-      app.doc.shapes.push({ type: 'arrow', id, x1: cx, y1: cy, x2: cx, y2: cy, box1: sel.id, box2: null });
+      app.doc.shapes.push({
+        type: 'arrow', id, x1: cx, y1: cy, x2: cx, y2: cy, box1: sel.id, box2: null,
+        // starting from a specific border side pins the source there
+        side1: dropSide(sel, cx, cy),
+      });
       app.drag = { mode: 'create-arrow', id, snap: snapshot(), moved: false };
       render();
       return;
@@ -237,10 +241,12 @@ function onMouseMove(e: MouseEvent): void {
       s.x1 = cx;
       s.y1 = cy;
       s.box1 = b && b.id !== s.box2 ? b.id : null;
+      s.side1 = s.box1 != null && b ? dropSide(b, cx, cy) : undefined;
     } else {
       s.x2 = cx;
       s.y2 = cy;
       s.box2 = b && b.id !== s.box1 ? b.id : null;
+      s.side2 = s.box2 != null && b ? dropSide(b, cx, cy) : undefined;
     }
   } else if (d.mode === 'create-box') {
     let s = d.id != null ? getShape(d.id) : null;
@@ -264,6 +270,7 @@ function onMouseMove(e: MouseEvent): void {
     s.x2 = cx;
     s.y2 = cy;
     s.box2 = b && b.id !== s.box1 ? b.id : null;
+    s.side2 = s.box2 != null && b ? dropSide(b, cx, cy) : undefined;
   }
   render();
 }

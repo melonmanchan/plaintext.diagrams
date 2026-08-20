@@ -1,5 +1,5 @@
 import { COLS, PRI, ROWS } from './constants';
-import type { ArrowShape, BoxShape, GroupShape, Point, Put, Raster, Shape, TextShape } from './types';
+import type { ArrowShape, BoxShape, GroupShape, Point, Put, Raster, Shape, Side, TextShape } from './types';
 import { clamp } from './util';
 import { laneBounds } from './shapes';
 
@@ -310,7 +310,7 @@ export function pathMidpoint(pts: Point[]): Point {
   return pts[0];
 }
 
-type Side = 'left' | 'right' | 'top' | 'bottom';
+
 
 /** Cell just OUTSIDE a given border side, at `cross` along it (clamped). */
 function anchorOn(b: BoxShape, side: Side, cross: number): { x: number; y: number; axis: 'h' | 'v' } {
@@ -326,7 +326,7 @@ function anchorOn(b: BoxShape, side: Side, cross: number): { x: number; y: numbe
  * Once that side is full, remaining arrows wrap onto the two
  * perpendicular sides.
  */
-function sideFor(b: BoxShape, o: Point): Side {
+export function sideFor(b: BoxShape, o: Point): Side {
   const cx = b.x + (b.w - 1) / 2, cy = b.y + (b.h - 1) / 2;
   const ndx = (o.x - cx) / Math.max(1, b.w / 2);
   const ndy = (o.y - cy) / Math.max(1, b.h / 2);
@@ -394,11 +394,11 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if (sideFor(b, t) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 1 });
+        if ((s.side1 ?? sideFor(b, t)) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if (sideFor(b, t) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 2 });
+        if ((s.side2 ?? sideFor(b, t)) === side && cellOf(t) === cell) entries.push({ id: s.id, which: 2 });
       }
     }
     if (entries.length <= 1) return { slot: 0, off: 0 };
@@ -415,14 +415,14 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
   if (b1) {
-    const side = sideFor(b1, o1);
+    const side = a.side1 ?? sideFor(b1, o1);
     const { slot, off } = slotOn(b1, side, o1, 1);
     off1 = off;
     const an = anchorFor(b1, o1, side, slot, off);
     p1 = { x: an.x, y: an.y }; ax1 = an.axis; side1 = an.side; a.x1 = an.x; a.y1 = an.y;
   }
   if (b2) {
-    const side = sideFor(b2, o2);
+    const side = a.side2 ?? sideFor(b2, o2);
     const { slot, off } = slotOn(b2, side, o2, 2);
     off2 = off;
     const an = anchorFor(b2, o2, side, slot, off);

@@ -1,3 +1,5 @@
+import { sideFor } from './raster';
+import { dropSide } from './shapes';
 import type { ArrowShape, BoxShape, GroupShape, Shape, TextShape } from './types';
 
 /* ============================================================
@@ -400,6 +402,19 @@ export function parseAscii(text: string): Shape[] {
     let box1 = attachedBox(tx, ty);
     if (box1 != null && box1 === box2) box1 = null;
     const a: ArrowShape = { type: 'arrow', id: seq++, x1: tx, y1: ty, x2: hx, y2: hy, box1, box2 };
+    // Side pins: when the drawn anchor side differs from what the router
+    // would auto-pick, preserve the author's routing intent (no text syntax).
+    const boxById = (id: number | null) => (id != null ? boxes.find((b) => b.id === id) ?? null : null);
+    const b1 = boxById(box1), b2 = boxById(box2);
+    const center = (b: BoxShape): { x: number; y: number } => ({ x: b.x + (b.w >> 1), y: b.y + (b.h >> 1) });
+    if (b1) {
+      const drawn = dropSide(b1, tx, ty);
+      if (drawn && drawn !== sideFor(b1, b2 ? center(b2) : { x: hx, y: hy })) a.side1 = drawn;
+    }
+    if (b2) {
+      const drawn = dropSide(b2, hx, hy);
+      if (drawn && drawn !== sideFor(b2, b1 ? center(b1) : { x: tx, y: ty })) a.side2 = drawn;
+    }
     if (label) a.text = label;
     if (dual) a.heads = 'both';
     const dotted = cells.some(([x, y]) => at(x, y) === ':');

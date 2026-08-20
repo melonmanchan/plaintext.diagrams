@@ -438,12 +438,12 @@ function resolveArrow(a, shapes) {
       const sb1 = boxOf(s.box1), sb2 = boxOf(s.box2);
       if (sb1 === b) {
         const t = sb2 ? center(sb2) : { x: s.x2, y: s.y2 };
-        if (sideFor(b, t) === side && cellOf(t) === cell)
+        if ((s.side1 ?? sideFor(b, t)) === side && cellOf(t) === cell)
           entries.push({ id: s.id, which: 1 });
       }
       if (sb2 === b) {
         const t = sb1 ? center(sb1) : { x: s.x1, y: s.y1 };
-        if (sideFor(b, t) === side && cellOf(t) === cell)
+        if ((s.side2 ?? sideFor(b, t)) === side && cellOf(t) === cell)
           entries.push({ id: s.id, which: 2 });
       }
     }
@@ -459,7 +459,7 @@ function resolveArrow(a, shapes) {
   const o1 = b2 ? { x: b2.x + (b2.w >> 1), y: b2.y + (b2.h >> 1) } : p2;
   const o2 = b1 ? { x: b1.x + (b1.w >> 1), y: b1.y + (b1.h >> 1) } : p1;
   if (b1) {
-    const side = sideFor(b1, o1);
+    const side = a.side1 ?? sideFor(b1, o1);
     const { slot, off: off3 } = slotOn(b1, side, o1, 1);
     off1 = off3;
     const an = anchorFor(b1, o1, side, slot, off3);
@@ -470,7 +470,7 @@ function resolveArrow(a, shapes) {
     a.y1 = an.y;
   }
   if (b2) {
-    const side = sideFor(b2, o2);
+    const side = a.side2 ?? sideFor(b2, o2);
     const { slot, off: off3 } = slotOn(b2, side, o2, 2);
     off2 = off3;
     const an = anchorFor(b2, o2, side, slot, off3);
@@ -657,6 +657,10 @@ function parseShapesJson(text) {
       for (const ref of [a.box1, a.box2]) {
         if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
           errors.push(`arrow ${a.id} references box id ${ref}, which does not exist`);
+      }
+      for (const [k, v] of [["side1", a.side1], ["side2", a.side2]]) {
+        if (v != null && !["left", "right", "top", "bottom"].includes(v))
+          errors.push(`arrow ${a.id}: "${k}" must be left|right|top|bottom`);
       }
       if (a.box1 == null && a.box2 == null && a.x1 === a.x2 && a.y1 === a.y2)
         errors.push(`arrow ${a.id} needs box1/box2 ids or distinct x1,y1 → x2,y2 coordinates`);

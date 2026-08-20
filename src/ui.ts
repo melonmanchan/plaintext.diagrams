@@ -1,4 +1,4 @@
-import { clearAll, cycleArrowHeads, cycleStyle, deleteSelected, nudge } from './commands';
+import { clearAll, cycleArrowHeads, cycleArrowSide, cycleStyle, deleteSelected, nudge } from './commands';
 import { MAX_COLS, MAX_ROWS } from './constants';
 import { encodeShareLink, parseShapesJson, remapIds, serializeShapes } from './interop';
 import { commitEdit, startEdit } from './editor';
@@ -20,7 +20,7 @@ const $ = <T extends Element = HTMLElement>(sel: string): T =>
 const HINTS: Record<Tool, string> = {
   select: 'click: select · shift-click / drag: multi-select · cmd-click: new box · middle-drag: pan · type: edit label · del: delete',
   box: 'drag to draw a box, then just type to label it · cmd+D: rounded corners',
-  arrow: 'drag from source to target — snaps to boxes · type to label · right-click / cmd+B: heads · cmd+D: dashed',
+  arrow: 'drag from source to target — snaps to boxes · type to label · right-click / cmd+B: heads · cmd+D: dashed · [ ]: pin sides',
   text: 'click anywhere to place free-standing text',
   group: 'drag to draw a group frame — moving it carries contents · type to title · cmd+D: cycle swimlanes',
 };
@@ -332,6 +332,13 @@ function onKeyDown(e: KeyboardEvent): void {
     case 'ArrowRight': e.preventDefault(); nudge(1, 0); return;
     case 'ArrowUp': e.preventDefault(); nudge(0, -1); return;
     case 'ArrowDown': e.preventDefault(); nudge(0, 1); return;
+  }
+
+  // Side-pin cycling on a sole selected arrow wins over label typing;
+  // for any other selection '[' / ']' still type into the label below.
+  if ((e.key === '[' || e.key === ']') && cycleArrowSide(e.key === '[' ? 1 : 2)) {
+    e.preventDefault();
+    return;
   }
 
   // Typing with a single shape selected starts label editing (draw.io style).

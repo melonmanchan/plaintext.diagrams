@@ -1,7 +1,7 @@
 import { render } from './render';
 import { placeFrom } from './shapes';
 import { app, getShape, pushUndo, save } from './store';
-import type { ArrowShape, Shape } from './types';
+import type { ArrowShape, Shape, Side } from './types';
 
 /* ============================================================
  * Selection-level commands shared by toolbar and keyboard.
@@ -17,6 +17,27 @@ export function cycleArrowHeads(): boolean {
   pushUndo();
   for (const a of arrows)
     a.heads = (a.heads ?? 'end') === 'end' ? 'both' : a.heads === 'both' ? 'start' : 'end';
+  save();
+  render();
+  return true;
+}
+
+const SIDE_CYCLE: (Side | undefined)[] = [undefined, 'left', 'right', 'top', 'bottom'];
+
+/**
+ * Cycle the pinned anchor side of one endpoint on the sole selected arrow:
+ * auto → left → right → top → bottom → auto. Pins need an attached box.
+ */
+export function cycleArrowSide(which: 1 | 2): boolean {
+  const sel = [...app.selection].map(getShape).filter((s): s is ArrowShape => s?.type === 'arrow');
+  if (sel.length !== 1) return false;
+  const a = sel[0];
+  if ((which === 1 ? a.box1 : a.box2) == null) return false;
+  pushUndo();
+  const key = which === 1 ? 'side1' : 'side2';
+  const next = SIDE_CYCLE[(SIDE_CYCLE.indexOf(a[key]) + 1) % SIDE_CYCLE.length];
+  if (next === undefined) delete a[key];
+  else a[key] = next;
   save();
   render();
   return true;
