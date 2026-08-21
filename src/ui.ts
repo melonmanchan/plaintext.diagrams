@@ -517,11 +517,9 @@ function onToolbarWheel(e: WheelEvent): void {
 }
 
 export function initUi(): void {
-	document
-		.querySelectorAll<HTMLButtonElement>("#tools button")
-		.forEach((b) =>
-			b.addEventListener("click", () => setTool(b.dataset.tool as Tool)),
-		);
+	document.querySelectorAll<HTMLButtonElement>("#tools button").forEach((b) => {
+		b.addEventListener("click", () => setTool(b.dataset.tool as Tool));
+	});
 	$("#undo").addEventListener("click", () => {
 		undo();
 		render();

@@ -221,9 +221,9 @@ function drawHandles(): void {
 }
 
 export function updateToolbar(): void {
-	document
-		.querySelectorAll<HTMLButtonElement>("#tools button")
-		.forEach((b) => b.classList.toggle("active", b.dataset.tool === app.tool));
+	document.querySelectorAll<HTMLButtonElement>("#tools button").forEach((b) => {
+		b.classList.toggle("active", b.dataset.tool === app.tool);
+	});
 	document.querySelector<HTMLButtonElement>("#undo")!.disabled =
 		!app.undoStack.length;
 	document.querySelector<HTMLButtonElement>("#redo")!.disabled =

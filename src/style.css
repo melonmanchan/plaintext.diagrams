@@ -34,7 +34,13 @@ body {
 	color: var(--fg);
 	font: 14px / 1.4 var(--mono);
 	overflow: hidden; /* fallback */
-	overflow: clip; /* blocks focus/programmatic body scroll */
+}
+
+@supports (overflow: clip) {
+	html,
+	body {
+		overflow: clip; /* blocks focus/programmatic body scroll */
+	}
 }
 
 body {
