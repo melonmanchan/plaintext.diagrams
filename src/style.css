@@ -43,7 +43,7 @@ body { display: flex; flex-direction: column; }
   flex: none;
   min-width: 0;
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--muted) transparent;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   padding: 8px 14px;
@@ -54,7 +54,7 @@ body { display: flex; flex-direction: column; }
 #toolbar::-webkit-scrollbar { height: 8px; }
 #toolbar::-webkit-scrollbar-track { background: transparent; }
 #toolbar::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--muted);
   border-radius: 999px;
   border: 2px solid var(--panel);
 }

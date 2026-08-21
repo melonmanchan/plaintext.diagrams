@@ -371,10 +371,22 @@ function onKeyDown(e: KeyboardEvent): void {
 }
 
 function onToolbarWheel(e: WheelEvent): void {
-  if (e.ctrlKey || e.metaKey) return;
+  if (e.ctrlKey || e.metaKey)  {
+    return;
+  }
+
   const toolbar = e.currentTarget as HTMLElement;
+
   if (toolbar.scrollWidth <= toolbar.clientWidth) return;
-  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  
+  const rawDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+
+ const delta = rawDelta * (
+     e.deltaMode === WheelEvent.DOM_DELTA_LINE
+       ? parseFloat(getComputedStyle(toolbar).lineHeight) || 16
+       : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? toolbar.clientWidth : 1
+   );
+
   if (!delta) return;
   const before = toolbar.scrollLeft;
   toolbar.scrollLeft += delta;
