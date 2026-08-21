@@ -62,6 +62,7 @@ body {
 	overscroll-behavior-x: contain;
 	-webkit-overflow-scrolling: touch;
 	padding: 8px 14px;
+	font-size: 12px;
 	background: var(--panel);
 	border-bottom: 1px solid var(--border);
 	user-select: none;
@@ -175,6 +176,9 @@ kbd {
 	border-radius: 4px;
 	padding: 0 4px;
 	margin-left: 4px;
+}
+#toolbar kbd {
+	font-size: 10px;
 }
 button.active kbd,
 button.primary kbd {
