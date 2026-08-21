@@ -70,6 +70,7 @@ jobs:
       - run: bunx playwright install --with-deps chromium
 
       - name: E2E tests
+        id: e2e
         run: bunx playwright test --grep-invert @visual
 
       # Visual baselines are platform-specific and produced by CI itself; this
@@ -81,14 +82,27 @@ jobs:
           E2E_VISUAL: '1'
         run: bunx playwright test --grep @visual
 
-      # Also fires when only the advisory visual step failed — that run carries
-      # the freshly written -linux baselines to commit.
-      - name: Upload report
-        if: failure() || steps.visual.outcome == 'failure'
+      # Keep the browsable HTML report from whichever Playwright invocation ran
+      # last. Visual failures also include the freshly written -linux baselines.
+      - name: Upload Playwright HTML report
+        if: always() && (steps.e2e.outcome != 'skipped' || steps.visual.outcome != 'skipped')
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: |
-            playwright-report/
+            playwright-report/index.html
+            playwright-report/**
             e2e/visual.spec.ts-snapshots/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload failed screenshots
+        if: failure() || steps.visual.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failed-screenshots
+          path: |
+            test-results/**/*.png
+            playwright-report/data/**/*.png
+          if-no-files-found: ignore
           retention-days: 7
