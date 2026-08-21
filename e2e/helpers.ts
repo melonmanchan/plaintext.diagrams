@@ -68,15 +68,19 @@ export async function rightClick(page: Page, at: { x: number; y: number }): Prom
   await page.mouse.click(at.x, at.y, { button: 'right' });
 }
 
-/** Synthetic ClipboardEvent paste after a mousemove onto the canvas center. */
+/**
+ * Synthetic bubbling ClipboardEvent paste after a mousemove onto a visible
+ * canvas cell (the canvas is far larger than the viewport, so its center is
+ * off-screen; real paste events bubble from document to the window listener).
+ */
 export async function pasteText(page: Page, text: string): Promise<void> {
   const box = await page.locator('#canvas').boundingBox();
   if (!box) throw new Error('#canvas has no bounding box');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + 125, box.y + 153); // cell (12, 8) at zoom 1
   await page.evaluate((t) => {
     const dt = new DataTransfer();
     dt.setData('text/plain', t);
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt }));
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
   }, text);
 }
 
