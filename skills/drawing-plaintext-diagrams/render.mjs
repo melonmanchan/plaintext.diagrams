@@ -184,7 +184,7 @@ function drawGroup(s, put) {
     const edges = [x, ...bounds, x + w - 1];
     for (let li = 0;li < n; li++) {
       const lo = edges[li] + 2, hi = edges[li + 1] - 1;
-      const t = (s.lanes[li] ?? "").slice(0, Math.max(0, hi - lo));
+      const t = (s.lanes?.[li] ?? "").slice(0, Math.max(0, hi - lo));
       for (let k = 0;k < t.length; k++)
         put(lo + k, top + 1, t[k], id, PRI.text);
     }
@@ -742,7 +742,7 @@ function parseShapesJson(text) {
   try {
     parsed = JSON.parse(trimmed);
   } catch (e) {
-    return { shapes: [], errors: ["invalid JSON: " + String(e)] };
+    return { shapes: [], errors: [`invalid JSON: ${String(e)}`] };
   }
   const list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && ("shapes" in parsed) && Array.isArray(parsed.shapes) ? parsed.shapes : null;
   if (!list)
@@ -852,7 +852,7 @@ var MAX_SHARE_BYTES = 1 << 22;
 
 // scripts/render-cli.ts
 function fail(msg) {
-  process.stderr.write("error: " + msg + `
+  process.stderr.write(`error: ${msg}
 `);
   process.exit(1);
 }
@@ -873,5 +873,5 @@ if (!out)
 if (check)
   process.stderr.write(`JSON OK — ${shapes.length} shape(s)
 `);
-process.stdout.write(out + `
+process.stdout.write(`${out}
 `);
