@@ -18,7 +18,7 @@ import type { Page } from '@playwright/test';
 import { canvasRect, cellPx, expect, seedDoc, test } from './helpers';
 import type { Shape } from '../src/types';
 
-test.skip(!process.env.E2E_VISUAL, 'visual baselines are CI-generated');
+test.skip(process.env.E2E_VISUAL !== '1', 'visual baselines are CI-generated');
 
 const SHOT = { maxDiffPixelRatio: 0.01 };
 

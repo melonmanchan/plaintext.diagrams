@@ -5,7 +5,7 @@ import { decodeShareLink, encodeShareLink, remapIds } from './interop';
 import { initInteractions } from './interactions';
 import { rasterize } from './raster';
 import { render, setupCanvas } from './render';
-import { app, genId, loadDoc, loadHistory, resetView, save, uid } from './store';
+import { app, genId, loadDoc, loadHistory, loadZoom, resetView, save, uid } from './store';
 import type { DocState } from './types';
 import { initUi, setTool, switchProject, updateProjectBar } from './ui';
 
@@ -65,11 +65,12 @@ function boot(): void {
   updateProjectBar();
 }
 
+migrateLegacyStore();
+loadZoom();
+boot();
 setupCanvas();
 initUi();
 initInteractions();
-migrateLegacyStore();
-boot();
 render();
 
 /** A #s= share link imports as a new project (existing projects untouched). */

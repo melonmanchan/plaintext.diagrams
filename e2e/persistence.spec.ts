@@ -35,6 +35,16 @@ test('undo history survives a reload', async ({ page }) => {
   expect(await ascii(page)).toBe(before);
 });
 
+test('zoom survives a reload', async ({ page }) => {
+  const reset = page.locator('#zoom-reset');
+  await page.keyboard.press('Control+=');
+  await expect(reset).toHaveText('125%');
+  expect(await page.evaluate(() => localStorage.getItem('ptd:zoom'))).toBe('1.25');
+  await reloadApp(page);
+  await expect(reset).toHaveText('125%');
+  await expect(page.locator('#canvas')).toHaveCSS('width', '2500px');
+});
+
 /* ---------- project bar ---------- */
 
 test('a new project starts empty and leaves the old doc untouched', async ({ page }) => {
