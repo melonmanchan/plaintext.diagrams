@@ -4,7 +4,6 @@ import { commitEdit, startEdit } from "./editor";
 import { render } from "./render";
 import {
 	applyGroupSlots,
-	boxAt,
 	boxAttachAt,
 	boxHandles,
 	boxMinSize,
@@ -208,7 +207,7 @@ function onMouseDown(e: MouseEvent): void {
 				// Group frames carry everything geometrically inside them.
 				for (const id of [...orig.keys()]) {
 					const g = getShape(id);
-					if (!g || g.type !== "group") continue;
+					if (g?.type !== "group") continue;
 					for (const s of app.doc.shapes) {
 						if (!orig.has(s.id) && insideGroup(s, g)) orig.set(s.id, clone(s));
 					}
@@ -345,7 +344,7 @@ function onMouseMove(e: MouseEvent): void {
 			applyGroupSlots(s, app.doc.shapes, d.slots);
 	} else if (d.mode === "endpoint") {
 		const s = getShape(d.id);
-		if (!s || s.type !== "arrow") return;
+		if (s?.type !== "arrow") return;
 		const b = boxAttachAt(app.doc.shapes, cx, cy);
 		if (d.which === 1) {
 			s.x1 = cx;
@@ -386,7 +385,7 @@ function onMouseMove(e: MouseEvent): void {
 		s.h = Math.max(3, Math.abs(cy - d.sy) + 1);
 	} else if (d.mode === "create-arrow") {
 		const s = getShape(d.id);
-		if (!s || s.type !== "arrow") return;
+		if (s?.type !== "arrow") return;
 		const b = boxAttachAt(app.doc.shapes, cx, cy);
 		s.x2 = cx;
 		s.y2 = cy;

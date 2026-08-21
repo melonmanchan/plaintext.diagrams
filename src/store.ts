@@ -101,7 +101,7 @@ export function save(): void {
 	persistHistory();
 }
 
-const HIST_KEY = (id: string) => "ptd:hist:" + id;
+const HIST_KEY = (id: string) => `ptd:hist:${id}`;
 
 export function persistZoom(): void {
 	try {

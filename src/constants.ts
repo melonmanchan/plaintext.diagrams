@@ -9,7 +9,7 @@ export const FONT =
 	'15px "Atkinson Hyperlegible Mono", ui-monospace, Menlo, Consolas, monospace';
 
 export const STORE_INDEX = "ptd:index";
-export const DOC_KEY = (id: string) => "ptd:doc:" + id;
+export const DOC_KEY = (id: string) => `ptd:doc:${id}`;
 export const ZOOM_KEY = "ptd:zoom";
 export const MIN_ZOOM = 0.5,
 	MAX_ZOOM = 2;

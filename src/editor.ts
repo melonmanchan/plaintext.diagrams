@@ -32,9 +32,9 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 			? (s.lanes?.[app.editingLane] ?? "")
 			: (s.text ?? ""));
 	ta.style.font = FONT;
-	ta.style.lineHeight = CH + "px";
+	ta.style.lineHeight = `${CH}px`;
 	ctx.font = FONT;
-	ta.style.letterSpacing = (CW - ctx.measureText("M").width).toFixed(2) + "px";
+	ta.style.letterSpacing = `${(CW - ctx.measureText("M").width).toFixed(2)}px`;
 	// The overlay lives in world px, scaled to the zoomed canvas. Every
 	// left/top write below multiplies by z — including the ones that run on
 	// later input events (a one-time post-scale here drifted on re-position).
@@ -43,15 +43,15 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 	ta.style.transform = `scale(${z})`;
 
 	if (s.type === "box") {
-		ta.style.left = (s.x + 1) * CW * z + "px";
-		ta.style.top = (s.y + 1) * CH * z + "px";
+		ta.style.left = `${(s.x + 1) * CW * z}px`;
+		ta.style.top = `${(s.y + 1) * CH * z}px`;
 		ta.style.textAlign = "center";
 		const ow = s.w,
 			oh = s.h;
 		// Grow the box live while typing (never below its pre-edit size).
 		const sync = () => {
 			const b = getShape(s.id);
-			if (!b || b.type !== "box") return;
+			if (b?.type !== "box") return;
 			const [minW, minH] = boxMinSize({ ...b, text: ta.value });
 			const w = Math.min(Math.max(ow, minW), MAX_COLS - b.x);
 			const h = Math.min(Math.max(oh, minH), MAX_ROWS - b.y);
@@ -62,10 +62,10 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 			}
 			const iw = Math.max(1, b.w - 2),
 				ih = Math.max(1, b.h - 2);
-			ta.style.width = iw * CW + "px";
-			ta.style.height = ih * CH + "px";
+			ta.style.width = `${iw * CW}px`;
+			ta.style.height = `${ih * CH}px`;
 			const n = ta.value.split("\n").length;
-			ta.style.paddingTop = Math.max(0, (ih - n) >> 1) * CH + "px";
+			ta.style.paddingTop = `${Math.max(0, (ih - n) >> 1) * CH}px`;
 		};
 		ta.addEventListener("input", sync);
 		sync();
@@ -86,18 +86,18 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 			oy = at.y;
 		const centered = s.type === "arrow"; // labels render centered on the midpoint
 		if (centered) ta.style.textAlign = "center";
-		ta.style.left = ox * CW * z + "px";
-		ta.style.top = oy * CH * z + "px";
+		ta.style.left = `${ox * CW * z}px`;
+		ta.style.top = `${oy * CH * z}px`;
 		const fit = () => {
 			const lines = ta.value.split("\n");
 			const wch = Math.max(8, ...lines.map((l) => l.length)) + 2;
-			ta.style.width = wch * CW + "px";
-			ta.style.height = Math.max(1, lines.length) * CH + 4 + "px";
+			ta.style.width = `${wch * CW}px`;
+			ta.style.height = `${Math.max(1, lines.length) * CH + 4}px`;
 			if (centered)
-				ta.style.left = ((ox + 0.5) * CW - (wch * CW) / 2) * z + "px";
+				ta.style.left = `${((ox + 0.5) * CW - (wch * CW) / 2) * z}px`;
 		};
 		ta.addEventListener("input", fit);
-		fit();
+		it();
 		// Double-click inside a free-text editor: promote the text to a box.
 		if (s.type === "text") {
 			ta.addEventListener("dblclick", (e) => {
@@ -120,7 +120,7 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 	});
 	ta.addEventListener("blur", () => commitEdit());
 
-	document.querySelector("#world")!.appendChild(ta);
+	document.querySelector("#world")?.appendChild(ta);
 	editorEl = ta;
 	ta.focus();
 	ta.setSelectionRange(ta.value.length, ta.value.length);
@@ -130,7 +130,7 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 /** Replace a text shape with a box labelled with the editor's content. */
 function promoteToBox(id: number, raw: string): void {
 	const t = getShape(id);
-	if (!t || t.type !== "text") return;
+	if (t?.type !== "text") return;
 	const caret = editorEl?.selectionStart ?? raw.length;
 	pushUndo(editSnap ?? undefined);
 	const b: BoxShape = {

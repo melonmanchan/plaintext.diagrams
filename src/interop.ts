@@ -41,7 +41,7 @@ export function parseShapesJson(text: string): ParsedShapes | null {
 	try {
 		parsed = JSON.parse(trimmed);
 	} catch (e) {
-		return { shapes: [], errors: ["invalid JSON: " + String(e)] };
+		return { shapes: [], errors: [`invalid JSON: ${String(e)}`] };
 	}
 	const list = Array.isArray(parsed)
 		? parsed
@@ -181,9 +181,7 @@ export function parseShapesJson(text: string): ParsedShapes | null {
 
 /** Serialize shapes as the interop JSON — a bare array, one shape per line. */
 export function serializeShapes(shapes: Shape[]): string {
-	return (
-		"[\n" + shapes.map((s) => "  " + JSON.stringify(s)).join(",\n") + "\n]"
-	);
+	return `[\n${shapes.map((s) => `  ${JSON.stringify(s)}`).join(",\n")}\n]`;
 }
 
 /**

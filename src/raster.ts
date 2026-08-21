@@ -133,7 +133,7 @@ function drawGroup(s: GroupShape, put: Put): void {
 		for (let li = 0; li < n; li++) {
 			const lo = edges[li] + 2,
 				hi = edges[li + 1] - 1;
-			const t = (s.lanes![li] ?? "").slice(0, Math.max(0, hi - lo));
+			const t = (s.lanes?.[li] ?? "").slice(0, Math.max(0, hi - lo));
 			for (let k = 0; k < t.length; k++)
 				put(lo + k, top + 1, t[k], id, PRI.text);
 		}

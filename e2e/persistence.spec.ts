@@ -80,7 +80,7 @@ test("a new project starts empty and leaves the old doc untouched", async ({
 	expect((await shapes(page)).length).toBe(1);
 	const firstDoc = await page.evaluate(
 		(id) =>
-			JSON.parse(localStorage.getItem("ptd:doc:" + id)!) as {
+			JSON.parse(localStorage.getItem(`ptd:doc:${id}`)!) as {
 				shapes: unknown[];
 			},
 		firstId,
@@ -110,12 +110,12 @@ test("deleting a project drops its storage keys and falls back", async ({
 	await drawBox(page); // save() writes the doc + history keys
 	const tempId = await page.locator("#project").inputValue();
 	expect(await storageKeys(page)).toEqual(
-		expect.arrayContaining(["ptd:doc:" + tempId, "ptd:hist:" + tempId]),
+		expect.arrayContaining([`ptd:doc:${tempId}`, `ptd:hist:${tempId}`]),
 	);
 	await page.click("#proj-delete");
 	const keys = await storageKeys(page);
-	expect(keys).not.toContain("ptd:doc:" + tempId);
-	expect(keys).not.toContain("ptd:hist:" + tempId);
+	expect(keys).not.toContain(`ptd:doc:${tempId}`);
+	expect(keys).not.toContain(`ptd:hist:${tempId}`);
 	expect((await projects(page)).map((p) => p.id)).toEqual([firstId]);
 	expect((await shapes(page)).length).toBe(6); // back on the demo doc
 });

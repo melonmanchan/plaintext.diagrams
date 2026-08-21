@@ -81,7 +81,7 @@ test("Download .txt saves the export under the project name", async ({
 	expect(download.suggestedFilename()).toBe("Flow Chart.txt");
 	// The file is the export plus a trailing newline.
 	expect(await readFile(await download.path(), "utf8")).toBe(
-		SCENE_ASCII + "\n",
+		`${SCENE_ASCII}\n`,
 	);
 });
 

@@ -80,7 +80,7 @@ function migrateLegacyStore(): void {
 	try {
 		if (
 			localStorage.getItem(STORE_INDEX) ||
-			!localStorage.getItem(LEGACY_PREFIX + "index")
+			!localStorage.getItem(`${LEGACY_PREFIX}index`)
 		)
 			return;
 		const moved: string[] = [];
@@ -91,7 +91,7 @@ function migrateLegacyStore(): void {
 		for (const key of moved) {
 			const value = localStorage.getItem(key);
 			if (value != null)
-				localStorage.setItem("ptd:" + key.slice(LEGACY_PREFIX.length), value);
+				localStorage.setItem(`ptd:${key.slice(LEGACY_PREFIX.length)}`, value);
 			localStorage.removeItem(key);
 		}
 	} catch {
@@ -172,7 +172,7 @@ async function importShareHash(): Promise<void> {
 	const decoded = await decodeShareLink(frag);
 	if ("error" in decoded) {
 		document.querySelector("#hint")!.textContent =
-			"This share link could not be opened — " + decoded.error;
+			`This share link could not be opened — ${decoded.error}`;
 		return;
 	}
 	// Remap untrusted ids to a fresh 1..N sequence. Incoming ids are attacker-

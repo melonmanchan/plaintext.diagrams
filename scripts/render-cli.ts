@@ -15,7 +15,7 @@ import { exportAscii } from "../src/export";
 import { parseShapesJson } from "../src/interop";
 
 function fail(msg: string): never {
-	process.stderr.write("error: " + msg + "\n");
+	process.stderr.write(`error: ${msg}\n`);
 	process.exit(1);
 }
 
@@ -40,4 +40,4 @@ if (!out) fail("diagram rendered empty — no shapes with geometry");
 // layout is adjusted in the editor, not by re-rolling geometry here.
 if (check) process.stderr.write(`JSON OK — ${shapes.length} shape(s)\n`);
 
-process.stdout.write(out + "\n");
+process.stdout.write(`${out}\n`);

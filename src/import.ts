@@ -5,7 +5,6 @@ import type {
 	BoxShape,
 	GroupShape,
 	Shape,
-	Side,
 	TextShape,
 } from "./types";
 

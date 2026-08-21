@@ -43,7 +43,7 @@ export async function openFresh(
 	/** Runs before the navigation — the seam for pre-goto listeners. */
 	before?: (opened: Page) => void,
 ): Promise<Page> {
-	const ctx = await page.context().browser()!.newContext();
+	const ctx = await page.context().browser()?.newContext();
 	const opened = await ctx.newPage();
 	before?.(opened);
 	await opened.goto(url);

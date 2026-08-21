@@ -82,8 +82,8 @@ describe("group frames", () => {
 		const reparsed = parseAscii(first);
 		const g = reparsed.find((s): s is GroupShape => s.type === "group");
 		expect(g).toBeDefined();
-		expect(g!.text).toBe("Backend");
-		expect([g!.x, g!.y, g!.w, g!.h]).toEqual([0, 0, 30, 9]);
+		expect(g?.text).toBe("Backend");
+		expect([g?.x, g?.y, g?.w, g?.h]).toEqual([0, 0, 30, 9]);
 		expect(reparsed.filter((s) => s.type === "box")).toHaveLength(2);
 		expect(exportAscii(reparsed)).toBe(first);
 	});
@@ -97,7 +97,7 @@ describe("group frames", () => {
 		const reparsed = parseAscii(uni);
 		const g = reparsed.find((s): s is GroupShape => s.type === "group");
 		expect(g).toBeDefined();
-		expect(g!.text).toBe("Backend");
+		expect(g?.text).toBe("Backend");
 		expect(reparsed.filter((s) => s.type === "text")).toHaveLength(0);
 		expect(exportAscii(reparsed)).toBe(uni);
 	});
@@ -112,7 +112,7 @@ describe("group frames", () => {
 		const reparsed = parseAscii(out);
 		const a = reparsed.find((s): s is ArrowShape => s.type === "arrow");
 		expect(a).toBeDefined();
-		expect(a!.text).toBe("click events");
+		expect(a?.text).toBe("click events");
 		expect(reparsed.filter((s) => s.type === "text")).toHaveLength(0);
 	});
 
@@ -127,11 +127,11 @@ describe("group frames", () => {
 		const reparsed = parseAscii(out);
 		const g = reparsed.find((s): s is GroupShape => s.type === "group");
 		expect(g).toBeDefined();
-		expect(g!.text).toBe("Zone");
+		expect(g?.text).toBe("Zone");
 		const a = reparsed.find((s): s is ArrowShape => s.type === "arrow");
 		expect(a).toBeDefined();
-		expect(a!.box1).not.toBeNull();
-		expect(a!.box2).not.toBeNull();
+		expect(a?.box1).not.toBeNull();
+		expect(a?.box2).not.toBeNull();
 		expect(exportAscii(reparsed)).toBe(out);
 	});
 

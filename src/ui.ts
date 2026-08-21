@@ -97,7 +97,7 @@ export function updateProjectBar(): void {
 	sel.value = app.currentProject;
 	const name =
 		app.projects.find((p) => p.id === app.currentProject)?.name || "diagram";
-	document.title = name + " — plaintext.diagrams";
+	document.title = `${name} — plaintext.diagrams`;
 }
 
 export function switchProject(id: string): void {
@@ -115,7 +115,7 @@ export function switchProject(id: string): void {
 function newProject(): void {
 	if (app.editing != null) commitEdit();
 	const name = (
-		prompt("Project name", "Untitled " + (app.projects.length + 1)) ?? ""
+		prompt("Project name", `Untitled ${app.projects.length + 1}`) ?? ""
 	).trim();
 	if (!name) return;
 	const p = { id: genId(), name };
@@ -142,7 +142,7 @@ function deleteProject(): void {
 	const p = app.projects.find((pr) => pr.id === app.currentProject);
 	if (!p || !confirm(`Delete project "${p.name}" and its diagram?`)) return;
 	try {
-		localStorage.removeItem("ptd:doc:" + p.id);
+		localStorage.removeItem(`ptd:doc:${p.id}`);
 	} catch {
 		/* ignore */
 	}
@@ -210,7 +210,7 @@ function closeExport(): void {
 /* ---------- zoom ---------- */
 
 function updateZoomLabel(): void {
-	$("#zoom-reset").textContent = Math.round(app.zoom * 100) + "%";
+	$("#zoom-reset").textContent = `${Math.round(app.zoom * 100)}%`;
 }
 
 export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
@@ -246,8 +246,8 @@ function onPaste(e: ClipboardEvent): void {
 	// that looks like JSON but is invalid errors out loud instead of being
 	// mangled by the text parser.
 	const json = parseShapesJson(text);
-	if (json && json.errors.length) {
-		$("#hint").textContent = "JSON import failed: " + json.errors[0];
+	if (json?.errors.length) {
+		$("#hint").textContent = `JSON import failed: ${json.errors[0]}`;
 		return;
 	}
 	const parsed: Shape[] = json ? json.shapes : parseAscii(text);
@@ -572,14 +572,14 @@ export function initUi(): void {
 		flash($("#copy-json"), "Copied ✓");
 	});
 	$("#download").addEventListener("click", () => {
-		const blob = new Blob([$<HTMLTextAreaElement>("#out").value + "\n"], {
+		const blob = new Blob([`${$<HTMLTextAreaElement>("#out").value}\n`], {
 			type: "text/plain",
 		});
 		const a = document.createElement("a");
 		a.href = URL.createObjectURL(blob);
 		const name =
 			app.projects.find((p) => p.id === app.currentProject)?.name || "diagram";
-		a.download = name + ".txt";
+		a.download = `${name}.txt`;
 		a.click();
 		URL.revokeObjectURL(a.href);
 	});
@@ -595,7 +595,7 @@ export function initUi(): void {
 		const name =
 			app.projects.find((p) => p.id === app.currentProject)?.name ?? "Shared";
 		const frag = await encodeShareLink(name, app.doc.shapes);
-		await copyText(location.origin + location.pathname + "#s=" + frag);
+		await copyText(`${location.origin + location.pathname}#s=${frag}`);
 		flash($("#proj-share"), "Link copied ✓");
 	});
 	$("#modal").addEventListener("mousedown", (e) => {

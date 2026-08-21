@@ -36,11 +36,11 @@ export function setupCanvas(): void {
 	if (W * scale * H * scale > MAX_AREA) scale = Math.sqrt(MAX_AREA / (W * H));
 	canvas.width = Math.round(W * scale);
 	canvas.height = Math.round(H * scale);
-	canvas.style.width = W * z + "px";
-	canvas.style.height = H * z + "px";
+	canvas.style.width = `${W * z}px`;
+	canvas.style.height = `${H * z}px`;
 	const world = document.querySelector<HTMLElement>("#world")!;
-	world.style.width = W * z + "px";
-	world.style.height = H * z + "px";
+	world.style.width = `${W * z}px`;
+	world.style.height = `${H * z}px`;
 	// Drawing code stays in world (cell-px) coordinates.
 	ctx.setTransform(scale, 0, 0, scale, 0, 0);
 

@@ -90,11 +90,11 @@ describe("arrow side pins", () => {
 		const ok = parseShapesJson(
 			'[{"type":"box","id":1,"x":0,"y":0,"w":8,"h":3},{"type":"box","id":2,"x":20,"y":0,"w":8,"h":3},{"type":"arrow","box1":1,"box2":2,"side1":"top"}]',
 		);
-		expect(ok!.errors).toEqual([]);
+		expect(ok?.errors).toEqual([]);
 		const bad = parseShapesJson(
 			'[{"type":"box","id":1,"x":0,"y":0,"w":8,"h":3},{"type":"arrow","box1":1,"side2":"diagonal","x2":30,"y2":9}]',
 		);
-		expect(bad!.errors[0]).toContain("side2");
+		expect(bad?.errors[0]).toContain("side2");
 	});
 	it("far-side pins route around the box, never through it", () => {
 		const a = box(1, 2, 2, 12, 5, "P");
@@ -139,7 +139,7 @@ describe("arrow side pins", () => {
 		const bad = parseShapesJson(
 			'[{"type":"box","id":1,"x":0,"y":0,"w":8,"h":3},{"type":"box","id":2,"x":20,"y":0,"w":8,"h":3},{"type":"arrow","box1":1,"box2":2,"side1":"top","at1":"x"}]',
 		);
-		expect(bad!.errors[0]).toContain("at1");
+		expect(bad?.errors[0]).toContain("at1");
 	});
 
 	it("bottom-pinned entry routes under the box, not through it", () => {

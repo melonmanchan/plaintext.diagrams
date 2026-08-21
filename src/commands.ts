@@ -80,7 +80,7 @@ export function cycleStyle(): boolean {
 					? undefined
 					: Array.from(
 							{ length: next },
-							(_, i) => s.lanes?.[i] ?? "Lane " + (i + 1),
+							(_, i) => s.lanes?.[i] ?? `Lane ${i + 1}`,
 						);
 		}
 	}

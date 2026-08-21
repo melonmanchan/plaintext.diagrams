@@ -65,7 +65,7 @@ test("an invalid share link shows a hint and still boots the demo", async ({
 	const origin = new URL(page.url()).origin;
 	const errors: Error[] = [];
 	// The pageerror listener has to be attached before the navigation.
-	const opened = await openFresh(page, origin + "/#s=1.garbage", (p) => {
+	const opened = await openFresh(page, `${origin}/#s=1.garbage`, (p) => {
 		p.on("pageerror", (e) => errors.push(e));
 	});
 	await expect(opened.locator("#hint")).toContainText("could not be opened");
