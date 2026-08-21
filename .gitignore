@@ -2,6 +2,10 @@ node_modules/
 dist/
 test-results/
 playwright-report/
+
+# local visual baselines — only the CI (-linux) snapshots are committed
+e2e/**/*-darwin.png
+
 docs/superpowers
 
 # local design docs — never committed

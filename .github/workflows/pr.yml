@@ -70,7 +70,15 @@ jobs:
       - run: bunx playwright install --with-deps chromium
 
       - name: E2E tests
-        run: bunx playwright test
+        run: bunx playwright test --grep-invert @visual
+
+      # Visual baselines are platform-specific and produced by CI itself; this
+      # step is advisory until the -linux snapshots are committed.
+      - name: Visual regression (advisory)
+        continue-on-error: true
+        env:
+          E2E_VISUAL: '1'
+        run: bunx playwright test --grep @visual
 
       - name: Upload report
         if: failure()
