@@ -1,32 +1,21 @@
-import type { Page } from '@playwright/test';
-import { expect, test } from './helpers';
-import { canvasRect, cellPx, rightClick, seedDoc, shapes } from './helpers';
-import type { ArrowShape, BoxShape } from '../src/types';
+import {
+  canvasRect, cellPx, expect, rightClick, seedDoc, selection, shapes, test,
+} from './helpers';
+import type { ArrowShape, BoxShape, Shape } from '../src/types';
 
-/** Slice of the window.__app test hook read by this spec. */
-interface SelectionHook { selection: number[] }
-
-async function selection(page: Page): Promise<number[]> {
-  return page.evaluate(() => {
-    // Test seam: __app is declared `unknown`; the app guarantees this getter.
-    const hook = window.__app as SelectionHook;
-    return hook.selection;
-  });
-}
-
-const TWO_BOXES = [
+const TWO_BOXES: Shape[] = [
   { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
   { type: 'box', id: 2, x: 30, y: 10, w: 12, h: 5, text: '' },
 ];
 
-const BOXES_AND_ARROW = [
+const BOXES_AND_ARROW: Shape[] = [
   { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
   { type: 'box', id: 2, x: 30, y: 2, w: 12, h: 5, text: '' },
   { type: 'arrow', id: 3, x1: 13, y1: 4, x2: 30, y2: 4, box1: 1, box2: 2 },
 ];
 
 test('right-click on an arrow cycles its heads end → both → start → end', async ({ page }) => {
-  await seedDoc(page, BOXES_AND_ARROW, 10);
+  await seedDoc(page, BOXES_AND_ARROW);
   const c = await canvasRect(page);
   const onLine = cellPx(c, 20, 4);
   const heads = async () =>
@@ -42,7 +31,7 @@ test('right-click on an arrow cycles its heads end → both → start → end', 
 });
 
 test('right-click box then right-click a second box connects them', async ({ page }) => {
-  await seedDoc(page, TWO_BOXES, 10);
+  await seedDoc(page, TWO_BOXES);
   const c = await canvasRect(page);
   await rightClick(page, cellPx(c, 8, 4));   // box 1 interior
   await rightClick(page, cellPx(c, 36, 12)); // box 2 interior
@@ -56,7 +45,7 @@ test('right-click box then right-click a second box connects them', async ({ pag
 });
 
 test('interior right-clicks leave both endpoint pins auto', async ({ page }) => {
-  await seedDoc(page, TWO_BOXES, 10);
+  await seedDoc(page, TWO_BOXES);
   const c = await canvasRect(page);
   await rightClick(page, cellPx(c, 8, 4));   // interior — no side to pin
   await rightClick(page, cellPx(c, 36, 12)); // interior — no side to pin
@@ -68,7 +57,7 @@ test('interior right-clicks leave both endpoint pins auto', async ({ page }) => 
 });
 
 test('edge right-clicks pin the clicked side and exact offset', async ({ page }) => {
-  await seedDoc(page, TWO_BOXES, 10);
+  await seedDoc(page, TWO_BOXES);
   const c = await canvasRect(page);
   await rightClick(page, cellPx(c, 13, 4));  // box 1 right border, row 2 of the box
   await rightClick(page, cellPx(c, 30, 12)); // box 2 left border, row 2 of the box
@@ -82,7 +71,7 @@ test('edge right-clicks pin the clicked side and exact offset', async ({ page })
 });
 
 test('right-click box then empty space drops a connected box with the editor open', async ({ page }) => {
-  await seedDoc(page, [TWO_BOXES[0]], 10);
+  await seedDoc(page, [TWO_BOXES[0]]);
   const c = await canvasRect(page);
   await rightClick(page, cellPx(c, 8, 4));   // arm box 1
   await rightClick(page, cellPx(c, 30, 12)); // empty canvas
@@ -102,7 +91,7 @@ test('right-click box then empty space drops a connected box with the editor ope
 });
 
 test('right-click on empty space connects from the sole selected box', async ({ page }) => {
-  await seedDoc(page, [TWO_BOXES[0]], 10);
+  await seedDoc(page, [TWO_BOXES[0]]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 8, 4).x, cellPx(c, 8, 4).y); // select box 1
   expect(await selection(page)).toEqual([1]);
@@ -119,7 +108,7 @@ test('right-click on empty space connects from the sole selected box', async ({ 
 });
 
 test('right-click on empty space with nothing armed or selected is a no-op', async ({ page }) => {
-  await seedDoc(page, [TWO_BOXES[0]], 10);
+  await seedDoc(page, [TWO_BOXES[0]]);
   const c = await canvasRect(page);
   await rightClick(page, cellPx(c, 30, 12));
   expect(await shapes(page)).toHaveLength(1);
@@ -128,7 +117,7 @@ test('right-click on empty space with nothing armed or selected is a no-op', asy
 });
 
 test('pending-connect hint appears after the first right-click and resets after cancel', async ({ page }) => {
-  await seedDoc(page, BOXES_AND_ARROW, 10);
+  await seedDoc(page, BOXES_AND_ARROW);
   const c = await canvasRect(page);
   const hint = page.locator('#hint');
 

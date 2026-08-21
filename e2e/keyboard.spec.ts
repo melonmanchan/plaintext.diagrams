@@ -1,8 +1,7 @@
-import { ascii, canvasRect, cellPx, drag, expect, seedDoc, shapes, test } from './helpers';
+import {
+  ascii, canvasRect, cellPx, drag, expect, seedDoc, selection, shapes, test,
+} from './helpers';
 import type { ArrowShape, BoxShape, GroupShape } from '../src/types';
-
-/** Slice of the window.__app test hook read by this spec. */
-interface SelectionHook { selection: number[] }
 
 /* ---------- tool shortcuts ---------- */
 
@@ -25,7 +24,7 @@ for (const { key, tool } of TOOL_KEYS) {
 /* ---------- Control+d style cycling ---------- */
 
 test('Control+d rounds the corners of a selected box', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 8, 4).x, cellPx(c, 8, 4).y);
   await page.keyboard.press('Control+d');
@@ -43,7 +42,7 @@ test('Control+d rounds the corners of a selected box', async ({ page }) => {
 test('Control+d dashes a selected arrow and toggles back', async ({ page }) => {
   await seedDoc(page, [
     { type: 'arrow', id: 1, x1: 2, y1: 2, x2: 20, y2: 2, box1: null, box2: null },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 10, 2).x, cellPx(c, 10, 2).y); // select the arrow
   await page.keyboard.press('Control+d');
@@ -56,7 +55,7 @@ test('Control+d dashes a selected arrow and toggles back', async ({ page }) => {
 });
 
 test('Control+d gives a selected group swimlanes with headers', async ({ page }) => {
-  await seedDoc(page, [{ type: 'group', id: 1, x: 2, y: 2, w: 24, h: 8, text: '' }], 10);
+  await seedDoc(page, [{ type: 'group', id: 1, x: 2, y: 2, w: 24, h: 8, text: '' }]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 10, 2).x, cellPx(c, 10, 2).y); // top border
   await page.keyboard.press('Control+d');
@@ -79,7 +78,7 @@ test('Control+d gives a selected group swimlanes with headers', async ({ page })
 test('Control+b cycles arrowheads end → both → start', async ({ page }) => {
   await seedDoc(page, [
     { type: 'arrow', id: 1, x1: 2, y1: 2, x2: 20, y2: 2, box1: null, box2: null },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 10, 2).x, cellPx(c, 10, 2).y);
   await page.keyboard.press('Control+b');
@@ -99,7 +98,7 @@ test('[ and ] walk endpoint pins auto → left → right → top → bottom → 
     { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
     { type: 'box', id: 2, x: 30, y: 2, w: 12, h: 5, text: '' },
     { type: 'arrow', id: 3, x1: 13, y1: 4, x2: 30, y2: 4, box1: 1, box2: 2 },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 22, 4).x, cellPx(c, 22, 4).y); // sole-select the arrow
   const arrow = async () => (await shapes(page)).find((s) => s.id === 3) as ArrowShape;
@@ -122,7 +121,7 @@ test('[ and ] walk endpoint pins auto → left → right → top → bottom → 
 });
 
 test('[ types into the label when the selection is a box', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 8, 4).x, cellPx(c, 8, 4).y);
   await page.keyboard.press('[');
@@ -163,21 +162,16 @@ test('Control+a selects every shape', async ({ page }) => {
     { type: 'box', id: 1, x: 2, y: 2, w: 6, h: 3, text: '' },
     { type: 'box', id: 2, x: 12, y: 2, w: 6, h: 3, text: '' },
     { type: 'arrow', id: 3, x1: 8, y1: 3, x2: 12, y2: 3, box1: 1, box2: 2 },
-  ], 10);
+  ]);
   await page.keyboard.press('Control+a');
-  const sel = await page.evaluate(() => {
-    // Test seam: __app is declared `unknown`; the app guarantees this getter.
-    const hook = window.__app as SelectionHook;
-    return hook.selection;
-  });
-  expect(sel.sort()).toEqual([1, 2, 3]);
+  expect((await selection(page)).sort()).toEqual([1, 2, 3]);
 });
 
 test('Delete removes the current selection', async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 6, h: 3, text: '' },
     { type: 'box', id: 2, x: 12, y: 2, w: 6, h: 3, text: '' },
-  ], 10);
+  ]);
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Delete');
   expect(await shapes(page)).toHaveLength(0);
@@ -203,13 +197,13 @@ test('Control+= / Control+- / Control+0 zoom and reset', async ({ page }) => {
 /* ---------- export / modals ---------- */
 
 test("'e' copies the diagram and flashes the export button", async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   await page.keyboard.press('e');
   await expect(page.locator('#export')).toHaveText('Copied ✓');
 });
 
 test('Shift+e opens the export modal', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   await page.keyboard.press('Shift+E');
   await expect(page.locator('#modal')).toBeVisible();
   await expect(page.locator('#out')).toHaveValue(/┌─+┐/);

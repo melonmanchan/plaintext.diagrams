@@ -1,21 +1,10 @@
-import type { Page } from '@playwright/test';
-import { expect, test } from './helpers';
-import { canvasRect, cellPx, drag, seedDoc, shapes } from './helpers';
+import {
+  canvasRect, cellCornerPx, cellPx, drag, expect, seedDoc, selection, shapes, test,
+} from './helpers';
 import type { ArrowShape, BoxShape, GroupShape } from '../src/types';
 
-/** Slice of the window.__app test hook read by this spec. */
-interface SelectionHook { selection: number[] }
-
-async function selection(page: Page): Promise<number[]> {
-  return page.evaluate(() => {
-    // Test seam: __app is declared `unknown`; the app guarantees this getter.
-    const hook = window.__app as SelectionHook;
-    return hook.selection;
-  });
-}
-
 test('dragging a box from its center moves it', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   const c = await canvasRect(page);
   await drag(page, cellPx(c, 8, 4), cellPx(c, 20, 10)); // dx=12, dy=6
   const [b] = (await shapes(page)) as BoxShape[];
@@ -28,7 +17,7 @@ test('dragging a group frame carries its contents', async ({ page }) => {
   await seedDoc(page, [
     { type: 'group', id: 1, x: 2, y: 2, w: 20, h: 8, text: '' },
     { type: 'box', id: 2, x: 5, y: 4, w: 8, h: 3, text: '' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await drag(page, cellPx(c, 10, 2), cellPx(c, 16, 7)); // top border, dx=6 dy=5
   const [g, b] = (await shapes(page)) as [GroupShape, BoxShape];
@@ -40,7 +29,7 @@ test('dragging a box near another aligns it to the snap guide', async ({ page })
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
     { type: 'box', id: 2, x: 30, y: 8, w: 12, h: 5, text: '' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   // Raw drop lands at y=3, one row off box 1's top edge → snaps to y=2.
   await drag(page, cellPx(c, 36, 10), cellPx(c, 36, 5));
@@ -50,12 +39,11 @@ test('dragging a box near another aligns it to the snap guide', async ({ page })
 });
 
 test('SE handle drag resizes the box', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 8, 4).x, cellPx(c, 8, 4).y); // select the box
-  // Handles sit at the frame's outer corner in px, not on a cell center.
-  const se = { x: c.left + (2 + 12) * 10, y: c.top + (2 + 5) * 18 };
-  await drag(page, se, cellPx(c, 20, 10));
+  // The SE handle sits at the frame's outer corner: box origin + size.
+  await drag(page, cellCornerPx(c, 2 + 12, 2 + 5), cellPx(c, 20, 10));
   const [b] = (await shapes(page)) as BoxShape[];
   expect([b.x, b.y, b.w, b.h]).toEqual([2, 2, 19, 9]);
 });
@@ -64,11 +52,11 @@ test('resizing a lane group keeps contents in their lane slots', async ({ page }
   await seedDoc(page, [
     { type: 'group', id: 1, x: 2, y: 2, w: 24, h: 10, text: '', lanes: ['A', 'B'] },
     { type: 'box', id: 2, x: 16, y: 5, w: 6, h: 3, text: '' }, // lane 1 (right)
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 6, 2).x, cellPx(c, 6, 2).y); // select via top border
-  const se = { x: c.left + (2 + 24) * 10, y: c.top + (2 + 10) * 18 };
-  await drag(page, se, cellPx(c, 19, 9)); // shrink to 18x8
+  // Shrink from the frame's outer corner to 18x8.
+  await drag(page, cellCornerPx(c, 2 + 24, 2 + 10), cellPx(c, 19, 9));
   const [g, b] = (await shapes(page)) as [GroupShape, BoxShape];
   expect([g.w, g.h]).toEqual([18, 8]);
   // Lane separator moved to column 11; the box was pulled into lane 1's
@@ -78,11 +66,11 @@ test('resizing a lane group keeps contents in their lane slots', async ({ page }
 });
 
 test('resize clamps to the label minimum size', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 18, h: 5, text: 'Wide Label' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 18, h: 5, text: 'Wide Label' }]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 11, 4).x, cellPx(c, 11, 4).y);
-  const se = { x: c.left + (2 + 18) * 10, y: c.top + (2 + 5) * 18 };
-  await drag(page, se, cellPx(c, 4, 3)); // collapse far below the minimum
+  // Collapse from the outer corner, far below the minimum.
+  await drag(page, cellCornerPx(c, 2 + 18, 2 + 5), cellPx(c, 4, 3));
   const [b] = (await shapes(page)) as BoxShape[];
   expect(b.w).toBe(16); // label 10 + borders 2 + padding 4
   expect(b.h).toBe(3);
@@ -94,7 +82,7 @@ test('endpoint drag re-attaches with an edge pin; interior drop clears it', asyn
     { type: 'box', id: 2, x: 30, y: 2, w: 12, h: 5, text: '' },
     { type: 'box', id: 3, x: 30, y: 10, w: 12, h: 5, text: '' },
     { type: 'arrow', id: 4, x1: 13, y1: 4, x2: 30, y2: 4, box1: 1, box2: 2 },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 20, 4).x, cellPx(c, 20, 4).y); // select the arrow line
   expect(await selection(page)).toEqual([4]);
@@ -118,7 +106,7 @@ test('endpoint drag to empty canvas detaches the arrow', async ({ page }) => {
     { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
     { type: 'box', id: 2, x: 30, y: 2, w: 12, h: 5, text: '' },
     { type: 'arrow', id: 3, x1: 13, y1: 4, x2: 30, y2: 4, box1: 1, box2: 2 },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 20, 4).x, cellPx(c, 20, 4).y);
   let a = (await shapes(page)).find((s) => s.id === 3) as ArrowShape;
@@ -134,7 +122,7 @@ test('marquee drag selects every shape it covers', async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 6, h: 3, text: '' },
     { type: 'box', id: 2, x: 12, y: 2, w: 6, h: 3, text: '' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await drag(page, cellPx(c, 0, 8), cellPx(c, 19, 1)); // empty start, sweep both
   expect((await selection(page)).sort()).toEqual([1, 2]);
@@ -144,7 +132,7 @@ test('shift-click adds to and removes from the selection', async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 6, h: 3, text: '' },
     { type: 'box', id: 2, x: 12, y: 2, w: 6, h: 3, text: '' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 4, 3).x, cellPx(c, 4, 3).y);
   expect(await selection(page)).toEqual([1]);
@@ -157,7 +145,7 @@ test('shift-click adds to and removes from the selection', async ({ page }) => {
 });
 
 test('arrow keys nudge the selection by one cell', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 5, y: 5, w: 6, h: 3, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 5, y: 5, w: 6, h: 3, text: '' }]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 8, 6).x, cellPx(c, 8, 6).y);
   await page.keyboard.press('ArrowRight');
@@ -172,7 +160,7 @@ test('Delete removes the selection and detaches its arrows', async ({ page }) =>
     { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
     { type: 'box', id: 2, x: 30, y: 2, w: 12, h: 5, text: '' },
     { type: 'arrow', id: 3, x1: 13, y1: 4, x2: 30, y2: 4, box1: 1, box2: 2 },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 36, 4).x, cellPx(c, 36, 4).y); // select box 2
   await page.keyboard.press('Delete');
@@ -199,7 +187,7 @@ test('Control+click on empty canvas drops a quick box', async ({ page }) => {
 });
 
 test('middle-button drag pans the stage', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' }]);
   const stage = page.locator('#stage');
   const before = await stage.evaluate((el) => el.scrollLeft);
   const c = await canvasRect(page);

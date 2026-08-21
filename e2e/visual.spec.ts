@@ -16,6 +16,7 @@
  */
 import type { Page } from '@playwright/test';
 import { canvasRect, cellPx, expect, seedDoc, test } from './helpers';
+import type { Shape } from '../src/types';
 
 test.skip(!process.env.E2E_VISUAL, 'visual baselines are CI-generated');
 
@@ -24,7 +25,7 @@ const SHOT = { maxDiffPixelRatio: 0.01 };
 /* ---------- fixtures ---------- */
 
 /** The reference scene: three boxes, two attached arrows, one free text. */
-const FLOW = [
+const FLOW: Shape[] = [
   { type: 'box', id: 1, x: 4, y: 3, w: 14, h: 5, text: 'Browser' },
   { type: 'box', id: 2, x: 26, y: 3, w: 14, h: 5, text: 'Web\nServer' },
   { type: 'box', id: 3, x: 26, y: 13, w: 14, h: 5, text: 'Database' },
@@ -47,14 +48,14 @@ async function zoomTo(page: Page, dir: 'in' | 'out', presses: number, label: str
 /* ---------- highlights ---------- */
 
 test('selection highlight @visual', async ({ page }) => {
-  await seedDoc(page, FLOW, 10);
+  await seedDoc(page, FLOW);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 11, 5).x, cellPx(c, 11, 5).y);
   await expect(page.locator('#stage')).toHaveScreenshot('selection.png', SHOT);
 });
 
 test('hover highlight @visual', async ({ page }) => {
-  await seedDoc(page, FLOW, 10);
+  await seedDoc(page, FLOW);
   const c = await canvasRect(page);
   await page.mouse.move(cellPx(c, 33, 5).x, cellPx(c, 33, 5).y);
   await expect(page.locator('#stage')).toHaveScreenshot('hover.png', SHOT);
@@ -67,7 +68,7 @@ test('dashed arrow glyphs @visual', async ({ page }) => {
     { type: 'arrow', id: 1, x1: 3, y1: 3, x2: 30, y2: 3, box1: null, box2: null, style: 'dashed' },
     { type: 'arrow', id: 2, x1: 6, y1: 6, x2: 6, y2: 20, box1: null, box2: null, style: 'dashed' },
     { type: 'arrow', id: 3, x1: 14, y1: 6, x2: 34, y2: 18, box1: null, box2: null, style: 'dashed', heads: 'both' },
-  ], 10);
+  ]);
   await expect(page.locator('#stage')).toHaveScreenshot('dashed-arrows.png', SHOT);
 });
 
@@ -75,7 +76,7 @@ test('rounded box @visual', async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 4, y: 3, w: 18, h: 6, text: 'rounded', style: 'round' },
     { type: 'box', id: 2, x: 28, y: 3, w: 18, h: 6, text: 'square' },
-  ], 10);
+  ]);
   await expect(page.locator('#stage')).toHaveScreenshot('rounded-box.png', SHOT);
 });
 
@@ -84,7 +85,7 @@ test('group tint and swimlanes @visual', async ({ page }) => {
     { type: 'group', id: 1, x: 3, y: 2, w: 44, h: 14, text: 'Sprint', lanes: ['Todo', 'Doing'] },
     { type: 'box', id: 2, x: 6, y: 6, w: 14, h: 5, text: 'spec' },
     { type: 'box', id: 3, x: 28, y: 6, w: 14, h: 5, text: 'build' },
-  ], 10);
+  ]);
   await expect(page.locator('#stage')).toHaveScreenshot('group-lanes.png', SHOT);
 });
 
@@ -94,7 +95,7 @@ test('snap guide mid-drag @visual', async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: 'anchor' },
     { type: 'box', id: 2, x: 30, y: 8, w: 12, h: 5, text: 'moving' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   // Drop one row off box 1's top edge: the move snaps and draws the guide.
   await page.mouse.move(cellPx(c, 36, 10).x, cellPx(c, 36, 10).y);
@@ -105,7 +106,7 @@ test('snap guide mid-drag @visual', async ({ page }) => {
 });
 
 test('marquee rect mid-drag @visual', async ({ page }) => {
-  await seedDoc(page, FLOW, 10);
+  await seedDoc(page, FLOW);
   const c = await canvasRect(page);
   await page.mouse.move(cellPx(c, 1, 1).x, cellPx(c, 1, 1).y);
   await page.mouse.down();
@@ -117,7 +118,7 @@ test('marquee rect mid-drag @visual', async ({ page }) => {
 /* ---------- editor overlay across zoom levels ---------- */
 
 test('editor overlay at zoom 0.64 @visual', async ({ page }) => {
-  await seedDoc(page, FLOW, 10);
+  await seedDoc(page, FLOW);
   await zoomTo(page, 'out', 2, '64%');
   const c = await canvasRect(page);
   await page.mouse.dblclick(cellPx(c, 11, 5, 0.64).x, cellPx(c, 11, 5, 0.64).y);
@@ -126,7 +127,7 @@ test('editor overlay at zoom 0.64 @visual', async ({ page }) => {
 });
 
 test('editor overlay at zoom 2 @visual', async ({ page }) => {
-  await seedDoc(page, FLOW, 10);
+  await seedDoc(page, FLOW);
   await zoomTo(page, 'in', 4, '200%'); // 1.25 → 1.56 → 1.95 → clamped to 2
   const c = await canvasRect(page);
   await page.mouse.dblclick(cellPx(c, 11, 5, 2).x, cellPx(c, 11, 5, 2).y);
@@ -137,7 +138,7 @@ test('editor overlay at zoom 2 @visual', async ({ page }) => {
 /* ---------- whole scene, zoomed out ---------- */
 
 test('full scene at zoom 0.5 @visual', async ({ page }) => {
-  await seedDoc(page, FLOW, 10);
+  await seedDoc(page, FLOW);
   await zoomTo(page, 'out', 4, '50%'); // 0.8 → 0.64 → 0.51 → clamped to 0.5
   await expect(page.locator('#stage')).toHaveScreenshot('scene-zoom-50.png', SHOT);
 });

@@ -1,56 +1,8 @@
-import type { Page } from '@playwright/test';
-import { expect, test } from './helpers';
-import { ascii, canvasRect, cellPx, pasteText, seedDoc, shapes } from './helpers';
+import {
+  ascii, canvasRect, cellPx, copied, expect, installCopyStub,
+  pasteAt, pasteText, seedDoc, shapes, test,
+} from './helpers';
 import type { ArrowShape, BoxShape, TextShape } from '../src/types';
-
-/* ---------- local helpers ---------- */
-
-/** Synthetic paste anchored at a specific cell (mousemove there first). */
-async function pasteAt(
-  page: Page,
-  c: { left: number; top: number },
-  cx: number,
-  cy: number,
-  text: string,
-): Promise<void> {
-  const p = cellPx(c, cx, cy);
-  await page.mouse.move(p.x, p.y);
-  await page.evaluate((t) => {
-    const dt = new DataTransfer();
-    dt.setData('text/plain', t);
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
-  }, text);
-}
-
-/** Test seam: the capture array installed on window by installCopyStub. */
-interface CopyCapture { __copied: string[] }
-
-/**
- * Stub navigator.clipboard.writeText to capture copies into window.__copied.
- * Installed as an init script, so the page is re-navigated to pick it up.
- */
-async function installCopyStub(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const copied: string[] = [];
-    // Test seam: augment window with the capture array for later readback.
-    const w = window as unknown as CopyCapture;
-    w.__copied = copied;
-    navigator.clipboard.writeText = (t: string): Promise<void> => {
-      copied.push(t);
-      return Promise.resolve();
-    };
-  });
-  await page.goto('/');
-  await page.waitForFunction(() => window.__app !== undefined);
-}
-
-async function copied(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    // Test seam: installCopyStub installed this before navigation.
-    const w = window as unknown as CopyCapture;
-    return w.__copied;
-  });
-}
 
 /* ---------- paste: ASCII / Unicode diagrams ---------- */
 
@@ -122,7 +74,7 @@ test('pasting shapes JSON keeps dashed style and side pins', async ({ page }) =>
 });
 
 test('pasting JSON-looking garbage reports the error and leaves the doc unchanged', async ({ page }) => {
-  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 8, h: 3, text: 'KEEP' }], 10);
+  await seedDoc(page, [{ type: 'box', id: 1, x: 2, y: 2, w: 8, h: 3, text: 'KEEP' }]);
   const before = await ascii(page);
   await pasteText(page, '{ this is not json');
   await expect(page.locator('#hint')).toContainText('JSON import failed');
@@ -145,7 +97,7 @@ test('Control+c copies only the selected shapes as text', async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 8, h: 3, text: 'AA' },
     { type: 'box', id: 2, x: 20, y: 2, w: 8, h: 3, text: 'BB' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.mouse.click(cellPx(c, 5, 3).x, cellPx(c, 5, 3).y); // select AA
   await page.keyboard.press('Control+c');
@@ -164,7 +116,7 @@ test("'e' copies the whole doc as text", async ({ page }) => {
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 8, h: 3, text: 'AA' },
     { type: 'box', id: 2, x: 20, y: 2, w: 8, h: 3, text: 'BB' },
-  ], 10);
+  ]);
   await page.keyboard.press('e');
   await expect(page.locator('#export')).toHaveText('Copied ✓');
   const [text] = await copied(page);
@@ -177,7 +129,7 @@ test('Copy JSON output re-imports as an identical diagram', async ({ page }) => 
     { type: 'box', id: 1, x: 2, y: 2, w: 8, h: 3, text: 'A' },
     { type: 'box', id: 2, x: 20, y: 2, w: 8, h: 3, text: 'B' },
     { type: 'arrow', id: 3, x1: 10, y1: 3, x2: 20, y2: 3, box1: 1, box2: 2, style: 'dashed', side1: 'right', side2: 'left' },
-  ], 10);
+  ]);
   const before = await ascii(page);
   await page.keyboard.press('Shift+E');
   await expect(page.locator('#modal')).toBeVisible();

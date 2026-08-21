@@ -1,37 +1,8 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './helpers';
-import { ascii, canvasRect, cellPx, drag, shapes } from './helpers';
+import {
+  ascii, canvasRect, cellPx, drag, expect, projects, reloadApp, shapes, stubDialogs, test,
+} from './helpers';
 import type { BoxShape } from '../src/types';
-
-/** Slice of the window.__app test hook read by this spec. */
-interface ProjectsHook { projects: { id: string; name: string }[] }
-
-async function reloadApp(page: Page): Promise<void> {
-  await page.reload();
-  await page.waitForFunction(() => window.__app !== undefined);
-}
-
-/**
- * Stub window.prompt/confirm (the project bar calls them synchronously).
- * Installed as an init script, so the page is re-navigated to pick it up.
- */
-async function stubDialogs(
-  page: Page,
-  stub: { prompt?: string; confirm?: boolean },
-): Promise<void> {
-  await page.addInitScript((s) => {
-    if (s.prompt !== undefined) window.prompt = () => s.prompt as string;
-    if (s.confirm !== undefined) window.confirm = () => s.confirm as boolean;
-  }, stub);
-  await reloadApp(page);
-}
-
-async function projects(page: Page): Promise<{ id: string; name: string }[]> {
-  return page.evaluate(() => {
-    // Test seam: __app is declared `unknown`; the app guarantees this getter.
-    return (window.__app as ProjectsHook).projects;
-  });
-}
 
 async function storageKeys(page: Page): Promise<string[]> {
   return page.evaluate(() => Object.keys(localStorage));

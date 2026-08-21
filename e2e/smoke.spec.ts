@@ -1,5 +1,4 @@
-import { expect, test } from './helpers';
-import { ascii, canvasRect, cellPx, drag } from './helpers';
+import { ascii, canvasRect, cellPx, drag, expect, test } from './helpers';
 
 test('boots the demo doc and draws a box with the mouse', async ({ page }) => {
   const c = await canvasRect(page);

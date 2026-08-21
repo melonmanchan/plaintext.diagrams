@@ -1,11 +1,13 @@
 import { readFile } from 'node:fs/promises';
-import type { Page } from '@playwright/test';
-import { ascii, expect, seedDoc, shapes, test } from './helpers';
+import {
+  ascii, copied, expect, installCopyStub, seedDoc, shapes, stubDialogs, test,
+} from './helpers';
+import type { Shape } from '../src/types';
 
 /* ---------- fixtures ---------- */
 
 /** Two boxes and a labelled arrow — a scene with a stable ASCII golden. */
-const SCENE = [
+const SCENE: Shape[] = [
   { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: 'Web' },
   { type: 'box', id: 2, x: 22, y: 2, w: 12, h: 5, text: 'API' },
   { type: 'arrow', id: 3, x1: 13, y1: 4, x2: 22, y2: 4, box1: 1, box2: 2, text: 'call' },
@@ -19,40 +21,10 @@ const SCENE_ASCII = [
   '└──────────┘        └──────────┘',
 ].join('\n');
 
-/** Test seam: the capture array installed on window by installCopyStub. */
-interface CopyCapture { __copied: string[] }
-
-/**
- * Stub navigator.clipboard.writeText to capture copies into window.__copied.
- * Installed as an init script, so the page is re-navigated to pick it up.
- */
-async function installCopyStub(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const copied: string[] = [];
-    // Test seam: augment window with the capture array for later readback.
-    const w = window as unknown as CopyCapture;
-    w.__copied = copied;
-    navigator.clipboard.writeText = (t: string): Promise<void> => {
-      copied.push(t);
-      return Promise.resolve();
-    };
-  });
-  await page.goto('/');
-  await page.waitForFunction(() => window.__app !== undefined);
-}
-
-async function copied(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    // Test seam: installCopyStub installed this before navigation.
-    const w = window as unknown as CopyCapture;
-    return w.__copied;
-  });
-}
-
 /* ---------- export preview ---------- */
 
 test('Shift+E previews the exported diagram with size stats', async ({ page }) => {
-  await seedDoc(page, SCENE, 10);
+  await seedDoc(page, SCENE);
   await page.keyboard.press('Shift+E');
   await expect(page.locator('#modal')).toBeVisible();
   await expect(page.locator('#stats')).toHaveText(/^\d+ lines × \d+ cols · \d+ chars$/);
@@ -71,11 +43,9 @@ test('the preview reports an empty canvas instead of size stats', async ({ page 
 });
 
 test('Download .txt saves the export under the project name', async ({ page }) => {
-  await page.addInitScript(() => { window.prompt = () => 'Flow Chart'; });
-  await page.reload();
-  await page.waitForFunction(() => window.__app !== undefined);
+  await stubDialogs(page, { prompt: 'Flow Chart' });
   await page.click('#proj-rename'); // distinctive name for the filename
-  await seedDoc(page, SCENE, 10);
+  await seedDoc(page, SCENE);
   await page.keyboard.press('Shift+E');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -88,7 +58,7 @@ test('Download .txt saves the export under the project name', async ({ page }) =
 
 test('Copy JSON copies the interop shapes JSON and flashes', async ({ page }) => {
   await installCopyStub(page);
-  await seedDoc(page, SCENE, 10);
+  await seedDoc(page, SCENE);
   await page.keyboard.press('Shift+E');
   await page.click('#copy-json');
   await expect(page.locator('#copy-json')).toHaveText('Copied ✓');
@@ -112,7 +82,7 @@ test('the help modal opens from ? and from the toolbar button', async ({ page })
 /* ---------- dismissal ---------- */
 
 test('Escape and a backdrop mousedown close both modals', async ({ page }) => {
-  await seedDoc(page, SCENE, 10);
+  await seedDoc(page, SCENE);
   const modal = page.locator('#modal');
   const help = page.locator('#helpmodal');
 

@@ -1,5 +1,4 @@
-import { expect, test } from './helpers';
-import { ascii, canvasRect, cellPx, drag, seedDoc, shapes } from './helpers';
+import { ascii, canvasRect, cellPx, drag, expect, seedDoc, shapes, test } from './helpers';
 import type { ArrowShape, BoxShape, GroupShape } from '../src/types';
 
 test('box tool drag creates a box and typing labels it', async ({ page }) => {
@@ -73,11 +72,10 @@ test('Escape cancels a label edit and reverts live growth', async ({ page }) => 
 });
 
 test('arrow tool drag from box to box attaches both endpoints', async ({ page }) => {
-  // seq well above the seeded ids: uid() must not collide with them
   await seedDoc(page, [
     { type: 'box', id: 1, x: 2, y: 2, w: 12, h: 5, text: '' },
     { type: 'box', id: 2, x: 30, y: 2, w: 12, h: 5, text: '' },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   await page.keyboard.press('a');
   await drag(page, cellPx(c, 13, 4), cellPx(c, 30, 4)); // right border → left border
@@ -187,7 +185,7 @@ test('typing labels a selected arrow with an embedded caption', async ({ page })
 test('double-click on a lane header edits the lane title', async ({ page }) => {
   await seedDoc(page, [
     { type: 'group', id: 1, x: 2, y: 2, w: 24, h: 8, text: '', lanes: ['', ''] },
-  ], 10);
+  ]);
   const c = await canvasRect(page);
   // The header band's claimed cells are the frame borders; dblclick the
   // left border at the header row to hit the group's first lane.
