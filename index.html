@@ -10,34 +10,34 @@
   <div class="brand">plaintext<span>.diagrams</span></div>
   <div class="group" id="projectbar">
     <select id="project" title="Switch project"></select>
-    <button id="proj-new" title="New project">New</button>
-    <button id="proj-rename" title="Rename current project">Rename</button>
-    <button id="proj-delete" title="Delete current project">Delete</button>
-    <button id="proj-share" title="Copy a link that opens this project — the whole diagram is encoded in the URL">Share</button>
+    <button type="button" id="proj-new" title="New project">New</button>
+    <button type="button" id="proj-rename" title="Rename current project">Rename</button>
+    <button type="button" id="proj-delete" title="Delete current project">Delete</button>
+    <button type="button" id="proj-share" title="Copy a link that opens this project — the whole diagram is encoded in the URL">Share</button>
   </div>
   <div class="group" id="tools">
-    <button data-tool="select" title="Select / move / resize (V)">⬚ Select <kbd>V</kbd></button>
-    <button data-tool="box" title="Draw box (B)">▭ Box <kbd>B</kbd></button>
-    <button data-tool="arrow" title="Draw arrow (A)">→ Arrow <kbd>A</kbd></button>
-    <button data-tool="text" title="Place text (T)">T Text <kbd>T</kbd></button>
-    <button data-tool="group" title="Draw group frame (G)">▣ Group <kbd>G</kbd></button>
+    <button type="button" data-tool="select" title="Select / move / resize (V)">⬚ Select <kbd>V</kbd></button>
+    <button type="button" data-tool="box" title="Draw box (B)">▭ Box <kbd>B</kbd></button>
+    <button type="button" data-tool="arrow" title="Draw arrow (A)">→ Arrow <kbd>A</kbd></button>
+    <button type="button" data-tool="text" title="Place text (T)">T Text <kbd>T</kbd></button>
+    <button type="button" data-tool="group" title="Draw group frame (G)">▣ Group <kbd>G</kbd></button>
   </div>
   <div class="group">
-    <button id="undo" title="Undo (Ctrl+Z)">↩ Undo</button>
-    <button id="redo" title="Redo (Ctrl+Shift+Z)">↪ Redo</button>
-    <button id="delete" title="Delete selection (Del)">✕ Delete</button>
-    <button id="clear" title="Clear canvas">Clear</button>
-    <button id="layout" title="Auto-layout left-to-right (L) — dagre layered">Layout</button>
-    <button id="tidy" title="Tidy (Shift+L) — snap near-aligned shapes into line">Tidy</button>
+    <button type="button" id="undo" title="Undo (Ctrl+Z)">↩ Undo</button>
+    <button type="button" id="redo" title="Redo (Ctrl+Shift+Z)">↪ Redo</button>
+    <button type="button" id="delete" title="Delete selection (Del)">✕ Delete</button>
+    <button type="button" id="clear" title="Clear canvas">Clear</button>
+    <button type="button" id="layout" title="Auto-layout left-to-right (L) — dagre layered">Layout</button>
+    <button type="button" id="tidy" title="Tidy (Shift+L) — snap near-aligned shapes into line">Tidy</button>
   </div>
   <div class="spacer"></div>
   <div class="group" id="zoomer">
-    <button id="zoom-out" title="Zoom out (Cmd/Ctrl −)">−</button>
-    <button id="zoom-reset" title="Reset zoom (Cmd/Ctrl 0) · Cmd/Ctrl+scroll to zoom at cursor">100%</button>
-    <button id="zoom-in" title="Zoom in (Cmd/Ctrl +)">+</button>
+    <button type="button" id="zoom-out" title="Zoom out (Cmd/Ctrl −)">−</button>
+    <button type="button" id="zoom-reset" title="Reset zoom (Cmd/Ctrl 0) · Cmd/Ctrl+scroll to zoom at cursor">100%</button>
+    <button type="button" id="zoom-in" title="Zoom in (Cmd/Ctrl +)">+</button>
   </div>
-  <button id="help" title="How to use — shortcuts & tips (?)">?</button>
-  <button id="export" class="primary" title="Copy ASCII to clipboard (E) · Shift+click: preview / download">Export ASCII <kbd>E</kbd></button>
+  <button type="button" id="help" title="How to use — shortcuts & tips (?)">?</button>
+  <button type="button" id="export" class="primary" title="Copy ASCII to clipboard (E) · Shift+click: preview / download">Export ASCII <kbd>E</kbd></button>
 </header>
 
 <main id="stage">
@@ -52,14 +52,14 @@
   <div class="sheet">
     <div class="sheet-head">
       <b>ASCII export</b>
-      <button id="close" title="Close (Esc)">×</button>
+      <button type="button" id="close" title="Close (Esc)">×</button>
     </div>
     <textarea id="out" readonly spellcheck="false" wrap="off"></textarea>
     <div class="sheet-foot">
       <span id="stats"></span>
-      <button id="download">Download .txt</button>
-      <button id="copy-json" title="Copy the diagram as shapes JSON — the agent/interop format; paste it back to re-import losslessly">Copy JSON</button>
-      <button id="copy" class="primary">Copy to clipboard</button>
+      <button type="button" id="download">Download .txt</button>
+      <button type="button" id="copy-json" title="Copy the diagram as shapes JSON — the agent/interop format; paste it back to re-import losslessly">Copy JSON</button>
+      <button type="button" id="copy" class="primary">Copy to clipboard</button>
     </div>
   </div>
 </div>
@@ -68,7 +68,7 @@
   <div class="sheet">
     <div class="sheet-head">
       <b>How to use</b>
-      <button id="help-close" title="Close (Esc)">×</button>
+      <button type="button" id="help-close" title="Close (Esc)">×</button>
     </div>
     <div class="help-body">
       <section>

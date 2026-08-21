@@ -184,7 +184,7 @@ function drawGroup(s, put) {
     const edges = [x, ...bounds, x + w - 1];
     for (let li = 0;li < n; li++) {
       const lo = edges[li] + 2, hi = edges[li + 1] - 1;
-      const t = (s.lanes[li] ?? "").slice(0, Math.max(0, hi - lo));
+      const t = (s.lanes?.[li] ?? "").slice(0, Math.max(0, hi - lo));
       for (let k = 0;k < t.length; k++)
         put(lo + k, top + 1, t[k], id, PRI.text);
     }
@@ -228,7 +228,12 @@ function drawText(s, put) {
       put(s.x + k, s.y + li, line[k], s.id, PRI.text);
   });
 }
-var INTO_HEAD = { left: ">", right: "<", top: "v", bottom: "^" };
+var INTO_HEAD = {
+  left: ">",
+  right: "<",
+  top: "v",
+  bottom: "^"
+};
 function drawArrow(s, shapes, put, ghost, busy) {
   const { pts, into1, into2 } = resolveArrow(s, shapes);
   if (pts.length < 2) {
@@ -280,7 +285,12 @@ function drawArrow(s, shapes, put, ghost, busy) {
     });
   }
 }
-var UNI_HEAD = { ">": "▶", "<": "◀", v: "▼", "^": "▲" };
+var UNI_HEAD = {
+  ">": "▶",
+  "<": "◀",
+  v: "▼",
+  "^": "▲"
+};
 var UNI_JUNCTION = {
   3: "─",
   12: "│",
@@ -379,7 +389,10 @@ function pathMidpoint(pts) {
     const a = pts[i], b = pts[i + 1];
     const len = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
     if (want <= len) {
-      return { x: a.x + Math.sign(b.x - a.x) * want, y: a.y + Math.sign(b.y - a.y) * want };
+      return {
+        x: a.x + Math.sign(b.x - a.x) * want,
+        y: a.y + Math.sign(b.y - a.y) * want
+      };
     }
     want -= len;
   }
@@ -405,7 +418,10 @@ function anchorFor(b, o, side, slot, off) {
   const span = vertical ? b.h - 2 : b.w - 2;
   const cap = Math.max(1, span + 1 >> 1);
   if (slot < cap) {
-    return { ...anchorOn(b, side, Math.round((vertical ? o.y : o.x) + off)), side };
+    return {
+      ...anchorOn(b, side, Math.round((vertical ? o.y : o.x) + off)),
+      side
+    };
   }
   const ovf = slot - cap;
   const inset = (Math.floor(ovf / 2) + 1) * 2;
@@ -426,7 +442,10 @@ function resolveArrow(a, shapes) {
     return s && s.type === "box" ? s : null;
   };
   const b1 = boxOf(a.box1), b2 = boxOf(a.box2);
-  const center = (b) => ({ x: b.x + (b.w >> 1), y: b.y + (b.h >> 1) });
+  const center = (b) => ({
+    x: b.x + (b.w >> 1),
+    y: b.y + (b.h >> 1)
+  });
   const slotOn = (b, side, o, which) => {
     const vertical = side === "left" || side === "right";
     const cellOf = (t) => vertical ? clamp(Math.round(t.y), b.y + 1, b.y + b.h - 2) : clamp(Math.round(t.x), b.x + 1, b.x + b.w - 2);
@@ -562,16 +581,34 @@ function resolveArrow(a, shapes) {
     ];
     const spanX1 = Math.min(p1.x, p2.x) - 4, spanX2 = Math.max(p1.x, p2.x) + 4;
     const spanY1 = Math.min(p1.y, p2.y) - 4, spanY2 = Math.max(p1.y, p2.y) + 4;
-    const bs = [b1, b2, ...obstacles.filter((o) => o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1)].filter((b) => b != null);
+    const bs = [
+      b1,
+      b2,
+      ...obstacles.filter((o) => o.x <= spanX2 && o.x + o.w - 1 >= spanX1 && o.y <= spanY2 && o.y + o.h - 1 >= spanY1)
+    ].filter((b) => b != null);
     if (bs.length) {
       const minX = Math.max(0, Math.min(...bs.map((b) => b.x)) - 2);
       const maxX = Math.max(...bs.map((b) => b.x + b.w - 1)) + 2;
       const minY = Math.max(0, Math.min(...bs.map((b) => b.y)) - 2);
       const maxY = Math.max(...bs.map((b) => b.y + b.h - 1)) + 2;
       for (const cx of [minX, maxX])
-        candidates.push([p1, e1, { x: cx, y: e1.y }, { x: cx, y: e2.y }, e2, p2]);
+        candidates.push([
+          p1,
+          e1,
+          { x: cx, y: e1.y },
+          { x: cx, y: e2.y },
+          e2,
+          p2
+        ]);
       for (const cy of [minY, maxY])
-        candidates.push([p1, e1, { x: e1.x, y: cy }, { x: e2.x, y: cy }, e2, p2]);
+        candidates.push([
+          p1,
+          e1,
+          { x: e1.x, y: cy },
+          { x: e2.x, y: cy },
+          e2,
+          p2
+        ]);
     }
     const usable = candidates.filter(segsClean);
     return (usable.length ? usable : candidates).reduce((best, c) => pathLen(c) < pathLen(best) ? c : best);
@@ -616,7 +653,13 @@ function resolveArrow(a, shapes) {
     if (b2 && (side2 === "top" || side2 === "bottom") && (side2 === "top" ? p1.y > p2.y : p1.y < p2.y)) {
       const outY = side2 === "top" ? p2.y - K : p2.y + K;
       const cx = p1.x < p2.x ? b2.x - 1 - K : b2.x + b2.w + K;
-      pts = [p1, { x: cx, y: p1.y }, { x: cx, y: outY }, { x: p2.x, y: outY }, p2];
+      pts = [
+        p1,
+        { x: cx, y: p1.y },
+        { x: cx, y: outY },
+        { x: p2.x, y: outY },
+        p2
+      ];
     } else {
       pts = [p1, { x: p2.x, y: p1.y }, p2];
     }
@@ -625,7 +668,13 @@ function resolveArrow(a, shapes) {
     if (b1 && (side1 === "top" || side1 === "bottom") && (side1 === "top" ? p2.y > p1.y : p2.y < p1.y)) {
       const outY = side1 === "top" ? p1.y - K : p1.y + K;
       const mx = (p1.x + p2.x >> 1) + off;
-      pts = [p1, { x: p1.x, y: outY }, { x: mx, y: outY }, { x: mx, y: p2.y }, p2];
+      pts = [
+        p1,
+        { x: p1.x, y: outY },
+        { x: mx, y: outY },
+        { x: mx, y: p2.y },
+        p2
+      ];
     } else {
       pts = [p1, { x: p1.x, y: p2.y }, p2];
     }
@@ -679,7 +728,12 @@ function exportAscii(shapes) {
 }
 
 // src/interop.ts
-var SHAPE_TYPES = { box: true, arrow: true, text: true, group: true };
+var SHAPE_TYPES = {
+  box: true,
+  arrow: true,
+  text: true,
+  group: true
+};
 function parseShapesJson(text) {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("["))
@@ -688,11 +742,14 @@ function parseShapesJson(text) {
   try {
     parsed = JSON.parse(trimmed);
   } catch (e) {
-    return { shapes: [], errors: ["invalid JSON: " + String(e)] };
+    return { shapes: [], errors: [`invalid JSON: ${String(e)}`] };
   }
   const list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && ("shapes" in parsed) && Array.isArray(parsed.shapes) ? parsed.shapes : null;
   if (!list)
-    return { shapes: [], errors: ['expected a shape array or { "shapes": [...] }'] };
+    return {
+      shapes: [],
+      errors: ['expected a shape array or { "shapes": [...] }']
+    };
   const errors = [];
   const shapes = list.map((s) => ({ ...s }));
   const num = (v) => typeof v === "number" && Number.isFinite(v);
@@ -740,11 +797,17 @@ function parseShapesJson(text) {
         if (ref != null && !shapes.some((sh) => sh.id === ref && sh.type === "box"))
           errors.push(`arrow ${a.id} references box id ${ref}, which does not exist`);
       }
-      for (const [k, v] of [["side1", a.side1], ["side2", a.side2]]) {
+      for (const [k, v] of [
+        ["side1", a.side1],
+        ["side2", a.side2]
+      ]) {
         if (v != null && !["left", "right", "top", "bottom"].includes(v))
           errors.push(`arrow ${a.id}: "${k}" must be left|right|top|bottom`);
       }
-      for (const [k, v] of [["at1", a.at1], ["at2", a.at2]]) {
+      for (const [k, v] of [
+        ["at1", a.at1],
+        ["at2", a.at2]
+      ]) {
         if (v != null && !num(v))
           errors.push(`arrow ${a.id}: "${k}" must be a number`);
       }
@@ -789,7 +852,7 @@ var MAX_SHARE_BYTES = 1 << 22;
 
 // scripts/render-cli.ts
 function fail(msg) {
-  process.stderr.write("error: " + msg + `
+  process.stderr.write(`error: ${msg}
 `);
   process.exit(1);
 }
@@ -810,5 +873,5 @@ if (!out)
 if (check)
   process.stderr.write(`JSON OK — ${shapes.length} shape(s)
 `);
-process.stdout.write(out + `
+process.stdout.write(`${out}
 `);
