@@ -370,6 +370,17 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
+function onToolbarWheel(e: WheelEvent): void {
+  if (e.ctrlKey || e.metaKey) return;
+  const toolbar = e.currentTarget as HTMLElement;
+  if (toolbar.scrollWidth <= toolbar.clientWidth) return;
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (!delta) return;
+  const before = toolbar.scrollLeft;
+  toolbar.scrollLeft += delta;
+  if (toolbar.scrollLeft !== before) e.preventDefault();
+}
+
 export function initUi(): void {
   document.querySelectorAll<HTMLButtonElement>('#tools button').forEach((b) =>
     b.addEventListener('click', () => setTool(b.dataset.tool as Tool)));
@@ -391,6 +402,7 @@ export function initUi(): void {
   $('#helpmodal').addEventListener('mousedown', (e) => {
     if (e.target === $('#helpmodal')) $('#helpmodal').hidden = true;
   });
+  $('#toolbar').addEventListener('wheel', onToolbarWheel, { passive: false });
   $('#stage').addEventListener('wheel', (e) => {
     if (!e.ctrlKey && !e.metaKey) return; // plain scroll keeps panning
     e.preventDefault();

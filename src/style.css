@@ -37,18 +37,30 @@ body { display: flex; flex-direction: column; }
 #toolbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   overflow-x: auto;
+  overflow-y: hidden;
   flex: none;
-  scrollbar-width: none;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 8px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
-#toolbar::-webkit-scrollbar { display: none; }
+#toolbar::-webkit-scrollbar { height: 8px; }
+#toolbar::-webkit-scrollbar-track { background: transparent; }
+#toolbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid var(--panel);
+}
 
 .brand {
+  flex: 0 0 auto;
   font-weight: 700;
   letter-spacing: 0.5px;
   margin-right: 6px;
@@ -56,8 +68,15 @@ body { display: flex; flex-direction: column; }
 }
 .brand span { color: var(--accent); }
 
-.group { display: flex; gap: 4px; }
-.spacer { flex: 1; }
+.group {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.spacer {
+  flex: 1 0 12px;
+  min-width: 12px;
+}
 
 button {
   appearance: none;
@@ -117,6 +136,24 @@ kbd {
   margin-left: 4px;
 }
 button.active kbd, button.primary kbd { color: inherit; }
+
+@media (max-width: 720px) {
+  #toolbar {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  .brand { margin-right: 2px; }
+  .spacer { display: none; }
+
+  button {
+    padding: 5px 8px;
+  }
+
+  #project {
+    max-width: 140px;
+  }
+}
 
 /* ---------- stage ---------- */
 #stage {
