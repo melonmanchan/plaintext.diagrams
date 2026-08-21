@@ -1,5 +1,5 @@
 import './style.css';
-import { LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
+import { FONT, LEGACY_KEY, LEGACY_PREFIX, STORE_INDEX } from './constants';
 import { exportAscii } from './export';
 import { decodeShareLink, encodeShareLink, remapIds } from './interop';
 import { initInteractions } from './interactions';
@@ -65,13 +65,26 @@ function boot(): void {
   updateProjectBar();
 }
 
-migrateLegacyStore();
-loadZoom();
-boot();
-setupCanvas();
-initUi();
-initInteractions();
-render();
+async function loadAppFonts(): Promise<void> {
+  try {
+    await document.fonts.load(FONT, 'plaintext.diagrams Browser Web Server Database');
+    await document.fonts.ready;
+  } catch { /* render with fallback fonts if the Font Loading API is unavailable */ }
+}
+
+async function start(): Promise<void> {
+  migrateLegacyStore();
+  loadZoom();
+  boot();
+  setupCanvas();
+  initUi();
+  initInteractions();
+  await loadAppFonts();
+  render();
+  void importShareHash();
+  addEventListener('hashchange', () => void importShareHash());
+  window.__app = appHook;
+}
 
 /** A #s= share link imports as a new project (existing projects untouched). */
 async function importShareHash(): Promise<void> {
@@ -98,14 +111,13 @@ async function importShareHash(): Promise<void> {
   updateProjectBar();
   render();
 }
-void importShareHash();
-addEventListener('hashchange', () => void importShareHash());
 
 // test hook
 declare global {
   interface Window { __app: unknown }
 }
-window.__app = {
+
+const appHook = {
   get doc() { return app.doc; },
   set doc(d: DocState) { app.doc = d; app.selection = new Set(); render(); },
   get selection() { return [...app.selection]; },
@@ -123,3 +135,5 @@ window.__app = {
     return location.origin + location.pathname + '#s=' + await encodeShareLink(name, app.doc.shapes);
   },
 };
+
+void start();

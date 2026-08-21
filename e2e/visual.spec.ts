@@ -1,15 +1,12 @@
 /**
  * Visual regression baselines for the canvas renderer.
  *
- * Baselines are platform-specific (canvas text rasterization differs between
- * macOS and the Linux CI image), so Playwright writes them as
- * `visual.spec.ts-snapshots/<name>-chromium-<platform>.png`. Only the
- * `-linux` files belong in git; `-darwin` files from local runs are ignored.
+ * Baselines are compared against canonical PNGs in
+ * `visual.spec.ts-snapshots/<name>.png`. Treat CI's Linux render as canonical;
+ * canvas text rasterization can differ on macOS.
  *
  * These tests are opt-in: they run only with E2E_VISUAL=1, and their titles
- * carry a `@visual` tag so CI can grep them into a separate step. Until the
- * linux baselines are committed from the first CI run, that step is
- * `continue-on-error: true`.
+ * carry a `@visual` tag so CI can grep them into a separate step.
  *
  * Regenerate locally with:
  *   E2E_VISUAL=1 bunx playwright test e2e/visual.spec.ts --update-snapshots

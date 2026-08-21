@@ -4,7 +4,7 @@ test-results/
 playwright-report/
 .superpowers/
 
-# local visual baselines — only the CI (-linux) snapshots are committed
+# old local visual baselines from Playwright's default platform-specific naming
 e2e/**/*-darwin.png
 
 docs/superpowers
