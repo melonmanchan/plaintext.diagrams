@@ -97,7 +97,7 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 				ta.style.left = `${((ox + 0.5) * CW - (wch * CW) / 2) * z}px`;
 		};
 		ta.addEventListener("input", fit);
-		it();
+		fit();
 		// Double-click inside a free-text editor: promote the text to a box.
 		if (s.type === "text") {
 			ta.addEventListener("dblclick", (e) => {

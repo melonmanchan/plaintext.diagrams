@@ -7,11 +7,13 @@ import {
 } from "../src/interop";
 import type { Shape } from "../src/types";
 
-const shapes: Shape[] = parseShapesJson(
+const parsedShapes = parseShapesJson(
 	'[{"type":"box","id":1,"x":0,"y":0,"w":10,"h":3,"text":"A","style":"round"},' +
 		'{"type":"group","id":2,"x":20,"y":0,"w":30,"h":10,"text":"G","lanes":["L","R"]},' +
 		'{"type":"arrow","id":3,"x1":0,"y1":0,"x2":0,"y2":0,"box1":1,"box2":null,"text":"go","style":"dashed"}]',
-)?.shapes;
+);
+if (!parsedShapes) throw new Error("expected shapes JSON");
+const shapes: Shape[] = parsedShapes.shapes;
 
 describe("share links", () => {
 	it("round-trips name and shapes through the fragment", async () => {

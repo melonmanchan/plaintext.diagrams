@@ -98,13 +98,18 @@ export function autoLayout(shapes: Shape[], only?: ReadonlySet<number>): void {
 	let shiftX = 0,
 		shiftY = 0;
 	const placed = nodes.filter((n) => targets.has(n.id));
+	const targetFor = (id: number) => {
+		const target = targets.get(id);
+		if (!target) throw new Error(`missing layout target for node ${id}`);
+		return target;
+	};
 	if (only && placed.length) {
 		shiftX =
 			Math.min(...placed.map((n) => n.x)) -
-			Math.min(...placed.map((n) => targets.get(n.id)?.x));
+			Math.min(...placed.map((n) => targetFor(n.id).x));
 		shiftY =
 			Math.min(...placed.map((n) => n.y)) -
-			Math.min(...placed.map((n) => targets.get(n.id)?.y));
+			Math.min(...placed.map((n) => targetFor(n.id).y));
 	}
 
 	// Nodes that all live inside one group must stay inside it: anchor
@@ -117,8 +122,8 @@ export function autoLayout(shapes: Shape[], only?: ReadonlySet<number>): void {
 		: undefined;
 	if (host && placed.length) {
 		const top = host.y + (host.text ? 2 : 0);
-		const minTx = Math.min(...placed.map((n) => targets.get(n.id)?.x)) + shiftX;
-		const minTy = Math.min(...placed.map((n) => targets.get(n.id)?.y)) + shiftY;
+		const minTx = Math.min(...placed.map((n) => targetFor(n.id).x)) + shiftX;
+		const minTy = Math.min(...placed.map((n) => targetFor(n.id).y)) + shiftY;
 		shiftX += Math.max(0, host.x + 3 - minTx);
 		shiftY += Math.max(0, top + 2 - minTy);
 	}

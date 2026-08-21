@@ -43,7 +43,9 @@ export async function openFresh(
 	/** Runs before the navigation — the seam for pre-goto listeners. */
 	before?: (opened: Page) => void,
 ): Promise<Page> {
-	const ctx = await page.context().browser()?.newContext();
+	const browser = page.context().browser();
+	if (!browser) throw new Error("openFresh requires a browser-backed page");
+	const ctx = await browser.newContext();
 	const opened = await ctx.newPage();
 	before?.(opened);
 	await opened.goto(url);

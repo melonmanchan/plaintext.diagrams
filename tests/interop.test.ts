@@ -104,11 +104,13 @@ describe("shapes JSON interop", () => {
 	});
 
 	it("serialization round-trips through the parser", () => {
-		const src = parseShapesJson(
+		const parsed = parseShapesJson(
 			'[{"type":"box","id":1,"x":0,"y":0,"w":10,"h":3,"text":"A","style":"round"},' +
 				'{"type":"group","id":2,"x":20,"y":0,"w":30,"h":10,"text":"G","lanes":["L","R"]},' +
 				'{"type":"arrow","id":3,"x1":0,"y1":0,"x2":0,"y2":0,"box1":1,"box2":null,"text":"go","style":"dashed"}]',
-		)?.shapes;
+		);
+		if (!parsed) throw new Error("expected shapes JSON");
+		const src = parsed.shapes;
 		const re = parseShapesJson(serializeShapes(src));
 		expect(re?.errors).toEqual([]);
 		expect(re?.shapes).toEqual(src);
