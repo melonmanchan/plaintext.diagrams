@@ -84,9 +84,7 @@ test('arrow tool drag from box to box attaches both endpoints', async ({ page })
   const arrow = (await shapes(page)).find((s) => s.type === 'arrow') as ArrowShape;
   expect(arrow.box1).toBe(1);
   expect(arrow.box2).toBe(2);
-  const out = await ascii(page);
-  expect(out).toContain('▶');
-  expect(out).toBe([
+  expect(await ascii(page)).toBe([
     '┌──────────┐                ┌──────────┐',
     '│          │                │          │',
     '│          │───────────────▶│          │',

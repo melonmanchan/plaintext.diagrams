@@ -1,5 +1,4 @@
-import { expect, test } from './helpers';
-import { ascii, canvasRect, cellPx, drag, seedDoc, shapes } from './helpers';
+import { ascii, canvasRect, cellPx, drag, expect, seedDoc, shapes, test } from './helpers';
 import type { ArrowShape, BoxShape, GroupShape } from '../src/types';
 
 /** Slice of the window.__app test hook read by this spec. */

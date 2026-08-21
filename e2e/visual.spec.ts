@@ -15,8 +15,7 @@
  *   E2E_VISUAL=1 bunx playwright test e2e/visual.spec.ts --update-snapshots
  */
 import type { Page } from '@playwright/test';
-import { expect, test } from './helpers';
-import { canvasRect, cellPx, seedDoc } from './helpers';
+import { canvasRect, cellPx, expect, seedDoc, test } from './helpers';
 
 test.skip(!process.env.E2E_VISUAL, 'visual baselines are CI-generated');
 
