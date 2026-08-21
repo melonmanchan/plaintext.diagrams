@@ -1,12 +1,12 @@
 import { clearAll, cycleArrowHeads, cycleArrowSide, cycleStyle, deleteSelected, nudge } from './commands';
-import { MAX_COLS, MAX_ROWS } from './constants';
+import { MAX_COLS, MAX_ROWS, MAX_ZOOM, MIN_ZOOM } from './constants';
 import { encodeShareLink, parseShapesJson, remapIds, serializeShapes } from './interop';
 import { commitEdit, startEdit } from './editor';
 import { autoLayout, tidy } from './layout';
 import { exportAscii } from './export';
 import { parseAscii } from './import';
 import { render, setupCanvas, updateToolbar } from './render';
-import { app, dropHistory, genId, getShape, loadDoc, loadHistory, pushUndo, redo, resetView, save, snapshot, soleSel, uid, undo } from './store';
+import { app, dropHistory, genId, getShape, loadDoc, loadHistory, persistZoom, pushUndo, redo, resetView, save, snapshot, soleSel, uid, undo } from './store';
 import type { Shape, Tool } from './types';
 import { clamp } from './util';
 
@@ -167,8 +167,12 @@ function closeExport(): void {
 
 /* ---------- zoom ---------- */
 
+function updateZoomLabel(): void {
+  $('#zoom-reset').textContent = Math.round(app.zoom * 100) + '%';
+}
+
 export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
-  z = clamp(z, 0.5, 2);
+  z = clamp(z, MIN_ZOOM, MAX_ZOOM);
   if (z === app.zoom) return;
   if (app.editing != null) commitEdit();
   const stage = $('#stage');
@@ -178,11 +182,12 @@ export function setZoom(z: number, pivot?: { sx: number; sy: number }): void {
   const wx = (stage.scrollLeft + sx) / app.zoom;
   const wy = (stage.scrollTop + sy) / app.zoom;
   app.zoom = z;
+  persistZoom();
   setupCanvas();
   render();
   stage.scrollLeft = wx * z - sx;
   stage.scrollTop = wy * z - sy;
-  $('#zoom-reset').textContent = Math.round(z * 100) + '%';
+  updateZoomLabel();
 }
 
 /* ---------- paste: shapes JSON or ASCII → shapes ---------- */
@@ -429,5 +434,6 @@ export function initUi(): void {
   });
   window.addEventListener('paste', onPaste);
   window.addEventListener('keydown', onKeyDown);
+  updateZoomLabel();
   $('#hint').textContent = hintText(0, 0);
 }

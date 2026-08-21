@@ -1,5 +1,6 @@
-import { COLS, DOC_KEY, ROWS, STORE_INDEX } from './constants';
+import { COLS, DOC_KEY, MAX_ZOOM, MIN_ZOOM, ROWS, STORE_INDEX, ZOOM_KEY } from './constants';
 import type { DocState, Drag, Guide, Project, Raster, Shape, Tool } from './types';
+import { clamp } from './util';
 
 /* ============================================================
  * Central mutable state + persistence. No DOM, no rendering —
@@ -78,6 +79,19 @@ export function save(): void {
 }
 
 const HIST_KEY = (id: string) => 'ptd:hist:' + id;
+
+export function persistZoom(): void {
+  try { localStorage.setItem(ZOOM_KEY, String(app.zoom)); } catch { /* ignore */ }
+}
+
+export function loadZoom(): void {
+  try {
+    const raw = localStorage.getItem(ZOOM_KEY);
+    if (raw == null) return;
+    const z = Number(raw);
+    if (Number.isFinite(z)) app.zoom = clamp(z, MIN_ZOOM, MAX_ZOOM);
+  } catch { /* storage unavailable */ }
+}
 
 function persistHistory(): void {
   const payload = (n: number) =>

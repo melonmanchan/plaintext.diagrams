@@ -1,5 +1,12 @@
 node_modules/
 dist/
+test-results/
+playwright-report/
+.superpowers/
+
+# old local visual baselines from Playwright's default platform-specific naming
+e2e/**/*-darwin.png
+
 docs/superpowers
 
 # local design docs — never committed

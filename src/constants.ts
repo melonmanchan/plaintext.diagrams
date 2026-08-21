@@ -2,10 +2,12 @@ export const CW = 10, CH = 18;            // cell size, px
 export const COLS = 200, ROWS = 100;      // minimum world size, cells
 export const MAX_COLS = 1000, MAX_ROWS = 500; // hard world cap
 export const GROW_MARGIN = 30;            // free cells kept beyond content
-export const FONT = '15px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
+export const FONT = '15px "Atkinson Hyperlegible Mono", ui-monospace, Menlo, Consolas, monospace';
 
 export const STORE_INDEX = 'ptd:index';
 export const DOC_KEY = (id: string) => 'ptd:doc:' + id;
+export const ZOOM_KEY = 'ptd:zoom';
+export const MIN_ZOOM = 0.5, MAX_ZOOM = 2;
 /** Storage prefixes of earlier releases, oldest last; migrated at boot. */
 export const LEGACY_PREFIX = 'vibedraw:';
 export const LEGACY_KEY = 'asciidraw-v1';
