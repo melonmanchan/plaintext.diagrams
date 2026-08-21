@@ -6,7 +6,11 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!!**/dist"]
+		"includes": [
+			"**",
+			"!!**/dist",
+			"!!skills/drawing-plaintext-diagrams/render.mjs"
+		]
 	},
 	"formatter": {
 		"enabled": true,
