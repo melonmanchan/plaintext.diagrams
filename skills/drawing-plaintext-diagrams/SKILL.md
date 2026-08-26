@@ -1,6 +1,6 @@
 ---
 name: drawing-plaintext-diagrams
-description: Use when creating or editing box-and-arrow diagrams as text — architecture sketches, flow diagrams, or anything destined for the plaintext.diagrams editor (paste-import), a README, or a code comment. Also use when a hand-drawn ASCII/Unicode diagram fails to import or its labels/groups get lost.
+description: Use when creating or editing box-and-arrow diagrams, tables, or swimlane grids as text — architecture sketches, flow diagrams, DB-schema tables, or anything destined for the plaintext.diagrams editor (paste-import), a README, or a code comment. Also use when a hand-drawn ASCII/Unicode diagram fails to import or its labels/groups get lost.
 ---
 
 # Drawing plaintext.diagrams
@@ -29,7 +29,7 @@ A JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x` → 
 |---|---|---|
 | box | `{type:'box', id, x, y, w, h, text?, style?}` | `style:'round'` for `╭─╮` corners; w/h auto-grow to fit text |
 | arrow | `{type:'arrow', box1?, box2?, text?, heads?, style?, side1?, side2?, at1?, at2?}` | attach by box `id`s — routing is automatic; `heads:'both'\|'start'`, `style:'dashed'`; `side1`/`side2:'left'\|'right'\|'top'\|'bottom'` softly pin which box side each end anchors on; `at1`/`at2` pin the exact cell along that side (offset from the box origin) — omit for auto |
-| group | `{type:'group', id, x, y, w, h, text?, lanes?}` | frame; contains whatever sits geometrically inside; `lanes:['A','B']` = swimlanes; titled groups need `h ≥ 5` |
+| group | `{type:'group', id, x, y, w, h, text?, lanes?}` | frame; contains whatever sits geometrically inside; `lanes:['A','B']` = swimlane columns rendered as a `╠═╬═╣` grid with a lane-title band; titled groups need `h ≥ 5`, laned ones `h ≥ 7` (titled) and `w ≥ 6·lanes` |
 | text | `{type:'text', x, y, text}` | free-standing annotation |
 
 Free-floating arrows (no boxes): give `x1,y1,x2,y2` instead of `box1/box2`.
@@ -54,9 +54,23 @@ Free-floating arrows (no boxes): give `x1,y1,x2,y2` instead of `box1/box2`.
 ]
 ```
 
+## Tables and lane grids
+
+A titled group with `lanes` renders as the app's double-line grid — title tab, lane-title band, `╠═╬═╣` underline — which doubles as a table: DB schemas, kanban columns, swimlane flows. One lane per column; place content inside each lane as `text` (or `box`) shapes. The rendered grid is app syntax, not stray text: pasting it imports back to the group, its lane titles, and the contents.
+
+```json
+[
+  {"type":"group","id":1,"x":0,"y":0,"w":100,"h":14,"text":"Database schema","lanes":["Users","Items","Orders"]},
+  {"type":"text","x":3,"y":6,"text":"id int PK"},
+  {"type":"text","x":37,"y":6,"text":"id int PK"}
+]
+```
+
+Lane `i` of `n` spans columns `x + i·(w−1)/n` to `x + (i+1)·(w−1)/n`; keep content ≥ 2 cells inside its lane so it stays attached to that lane.
+
 ## Common mistakes
 
-- **Hand-drawing the grid** — labels beside (not on) an arrow and title-in-border groups (`┌─ Title ──┐`) silently import as stray text. Deliver JSON instead; only the renderer draws correct text.
+- **Hand-drawing unsupported syntax** — labels beside (not on) an arrow and single-line title-in-border groups (`┌─ Title ──┐`) silently import as stray text. The double-line group/lane grid (`╔═╗`, `╠═╬═╣`) IS valid app syntax and paste-imports fine — but one misaligned junction splits it into stray text, so author JSON either way.
 - **Crowding** (mode 2) — a label overlapping any border corrupts both shapes. Spread out; cells are cheap.
 - **Arrow coordinates instead of ids** — free endpoints don't re-attach when boxes move. Use `box1`/`box2`.
 - **Editing rendered text by hand** — regenerate from JSON; alignment breaks invisibly.
