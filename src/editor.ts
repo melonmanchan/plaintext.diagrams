@@ -98,9 +98,10 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 		};
 		ta.addEventListener("input", fit);
 		fit();
-		// Double-click inside a free-text editor: promote the text to a box.
+		// Right-click / Cmd+B promotes free text to a box (contextmenu +
+		// keydown below); double-click keeps its native select-word gesture.
 		if (s.type === "text") {
-			ta.addEventListener("dblclick", (e) => {
+			ta.addEventListener("contextmenu", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
 				promoteToBox(s.id, ta.value);
@@ -116,6 +117,13 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 		} else if (e.key === "Escape") {
 			e.preventDefault();
 			cancelEdit();
+		} else if (
+			s.type === "text" &&
+			(e.metaKey || e.ctrlKey) &&
+			e.key.toLowerCase() === "b"
+		) {
+			e.preventDefault();
+			promoteToBox(s.id, ta.value);
 		}
 	});
 	ta.addEventListener("blur", () => commitEdit());

@@ -50,7 +50,7 @@ const HINTS: Record<Tool, string> = {
 	box: "drag to draw a box, then just type to label it · cmd+D: rounded corners",
 	arrow:
 		"drag from source to target — snaps to boxes · type to label · right-click / cmd+B: heads · cmd+D: dashed · [ ]: pin sides",
-	text: "click anywhere to place free-standing text",
+	text: "click anywhere to place free-standing text · right-click / cmd+B: promote to box",
 	group:
 		"drag to draw a group frame — moving it carries contents · type to title · cmd+D: cycle swimlanes",
 };

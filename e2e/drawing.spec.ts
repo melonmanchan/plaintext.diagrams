@@ -127,7 +127,7 @@ test("arrow tool drags a free arrow across empty canvas", async ({ page }) => {
 	expect(await ascii(page)).toBe("──────────▶");
 });
 
-test("text tool places free text and dblclick promotes it to a box", async ({
+test("text tool places free text; right-click or Control+b promotes it", async ({
 	page,
 }) => {
 	await seedDoc(page, []);
@@ -139,10 +139,17 @@ test("text tool places free text and dblclick promotes it to a box", async ({
 	await page.keyboard.type("note");
 	await page.keyboard.press("Enter");
 	expect(await ascii(page)).toBe("note");
-	// First dblclick reopens the inline editor; second one (on the
-	// editor overlay) promotes the free text to a box.
+	// Dblclick reopens the inline editor; another dblclick on the editor
+	// overlay is a select-word gesture and must NOT promote (regression:
+	// accidental double-clicks used to turn text into boxes).
 	await page.mouse.dblclick(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y);
 	await page.mouse.dblclick(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y);
+	expect((await shapes(page))[0].type).toBe("text");
+	// Right-click on the editor overlay promotes the free text to a box
+	// (Control+b does the same; see the keyboard chord below).
+	await page.mouse.click(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y, {
+		button: "right",
+	});
 	await page.keyboard.press("Enter"); // commit the reopened box editor
 	const [b] = (await shapes(page)) as BoxShape[];
 	expect(b.type).toBe("box");
@@ -150,6 +157,17 @@ test("text tool places free text and dblclick promotes it to a box", async ({
 	expect(await ascii(page)).toBe(
 		["┌────────┐", "│  note  │", "└────────┘"].join("\n"),
 	);
+});
+
+test("Control+b in the text editor promotes it to a box", async ({ page }) => {
+	await seedDoc(page, [{ type: "text", id: 1, x: 5, y: 3, text: "note" }]);
+	const c = await canvasRect(page);
+	await page.mouse.dblclick(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y);
+	await page.keyboard.press("Control+b");
+	await page.keyboard.press("Enter");
+	const [b] = (await shapes(page)) as BoxShape[];
+	expect(b.type).toBe("box");
+	expect(b.text).toBe("note");
 });
 
 test("group tool drag creates a frame and typing titles it with a tab", async ({
