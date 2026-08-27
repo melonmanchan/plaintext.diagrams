@@ -157,3 +157,32 @@ test("pending-connect hint appears after the first right-click and resets after 
 	await expect(hint).not.toContainText("connect");
 	expect(await shapes(page)).toHaveLength(3); // no new shapes appeared
 });
+
+test("right-click on a selected text promotes it to a box in place", async ({
+	page,
+}) => {
+	await seedDoc(page, [{ type: "text", id: 1, x: 5, y: 3, text: "note" }]);
+	const c = await canvasRect(page);
+	await page.mouse.click(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y); // select it
+	await rightClick(page, cellPx(c, 6, 3));
+	const [b] = (await shapes(page)) as BoxShape[];
+	expect(b.type).toBe("box");
+	expect(b.id).toBe(1);
+	expect(b.text).toBe("note");
+	expect(await selection(page)).toEqual([1]);
+});
+
+test("right-click on a text drops a pending connect instead of arrowing", async ({
+	page,
+}) => {
+	await seedDoc(page, [
+		{ type: "box", id: 1, x: 2, y: 2, w: 12, h: 5, text: "" },
+		{ type: "text", id: 2, x: 30, y: 4, text: "note" },
+	]);
+	const c = await canvasRect(page);
+	await rightClick(page, cellPx(c, 8, 4)); // arm the box as source
+	await rightClick(page, cellPx(c, 31, 4)); // text: promote, not connect
+	const all = await shapes(page);
+	expect(all.filter((s) => s.type === "arrow")).toHaveLength(0);
+	expect(all.find((s) => s.id === 2)?.type).toBe("box");
+});

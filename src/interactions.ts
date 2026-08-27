@@ -1,6 +1,6 @@
 import { cycleArrowHeads } from "./commands";
 import { CH, CW, MAX_COLS, MAX_ROWS } from "./constants";
-import { commitEdit, startEdit } from "./editor";
+import { commitEdit, promoteToBox, startEdit } from "./editor";
 import { render } from "./render";
 import {
 	applyGroupSlots,
@@ -525,6 +525,14 @@ function onContextMenu(e: MouseEvent): void {
 		connectAt = undefined;
 		app.selection = new Set([s.id]);
 		cycleArrowHeads();
+		return;
+	}
+	if (s && s.type === "text") {
+		// Promote the free text to a box; any pending connect is dropped.
+		connectFrom = null;
+		connectSide = undefined;
+		connectAt = undefined;
+		promoteToBox(s.id);
 		return;
 	}
 	if (s && s.type === "box") {

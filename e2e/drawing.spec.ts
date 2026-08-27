@@ -127,7 +127,7 @@ test("arrow tool drags a free arrow across empty canvas", async ({ page }) => {
 	expect(await ascii(page)).toBe("──────────▶");
 });
 
-test("text tool places free text; right-click or Control+b promotes it", async ({
+test("text tool places free text; canvas right-click promotes it", async ({
 	page,
 }) => {
 	await seedDoc(page, []);
@@ -141,16 +141,19 @@ test("text tool places free text; right-click or Control+b promotes it", async (
 	expect(await ascii(page)).toBe("note");
 	// Dblclick reopens the inline editor; another dblclick on the editor
 	// overlay is a select-word gesture and must NOT promote (regression:
-	// accidental double-clicks used to turn text into boxes).
+	// accidental double-clicks used to turn text into boxes). Right-click
+	// on the overlay is inert too — promotion moved to the canvas.
 	await page.mouse.dblclick(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y);
 	await page.mouse.dblclick(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y);
-	expect((await shapes(page))[0].type).toBe("text");
-	// Right-click on the editor overlay promotes the free text to a box
-	// (Control+b does the same; see the keyboard chord below).
 	await page.mouse.click(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y, {
 		button: "right",
 	});
-	await page.keyboard.press("Enter"); // commit the reopened box editor
+	expect((await shapes(page))[0].type).toBe("text");
+	await page.keyboard.press("Enter"); // commit the reopened editor
+	// Right-click the placed text on the canvas: it becomes a box in place.
+	await page.mouse.click(cellPx(c, 6, 3).x, cellPx(c, 6, 3).y, {
+		button: "right",
+	});
 	const [b] = (await shapes(page)) as BoxShape[];
 	expect(b.type).toBe("box");
 	expect(b.text).toBe("note");

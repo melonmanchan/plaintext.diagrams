@@ -98,15 +98,8 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 		};
 		ta.addEventListener("input", fit);
 		fit();
-		// Right-click / Cmd+B promotes free text to a box (contextmenu +
-		// keydown below); double-click keeps its native select-word gesture.
-		if (s.type === "text") {
-			ta.addEventListener("contextmenu", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				promoteToBox(s.id, ta.value);
-			});
-		}
+		// Cmd+B promotes free text to a box while editing (keydown below);
+		// right-click promotes a placed text from the canvas (interactions).
 	}
 
 	ta.addEventListener("keydown", (e) => {
@@ -135,11 +128,17 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 	render();
 }
 
-/** Replace a text shape with a box labelled with the editor's content. */
-function promoteToBox(id: number, raw: string): void {
+/**
+ * Replace a text shape with a box labelled with its content. Called with
+ * `raw` from the inline editor (Cmd+B keeps typing flow: the editor reopens
+ * on the box) or without it from a canvas right-click on the text shape.
+ */
+export function promoteToBox(id: number, raw?: string): void {
 	const t = getShape(id);
 	if (t?.type !== "text") return;
-	const caret = editorEl?.selectionStart ?? raw.length;
+	const editing = raw != null;
+	const label = raw ?? t.text ?? "";
+	const caret = editorEl?.selectionStart ?? label.length;
 	pushUndo(editSnap ?? undefined);
 	const b: BoxShape = {
 		type: "box",
@@ -149,7 +148,7 @@ function promoteToBox(id: number, raw: string): void {
 		y: clamp(t.y - 1, 0, MAX_ROWS - 3),
 		w: 3,
 		h: 3,
-		text: raw.replace(/[ \t]+$/gm, "").replace(/\n+$/, ""),
+		text: label.replace(/[ \t]+$/gm, "").replace(/\n+$/, ""),
 	};
 	fitBoxToLabel(b);
 	app.doc.shapes[app.doc.shapes.indexOf(t)] = b;
@@ -157,8 +156,10 @@ function promoteToBox(id: number, raw: string): void {
 	app.selection = new Set([b.id]);
 	save();
 	render();
-	startEdit(b);
-	editorEl?.setSelectionRange(caret, caret);
+	if (editing) {
+		startEdit(b);
+		editorEl?.setSelectionRange(caret, caret);
+	}
 }
 
 export function commitEdit(): void {
