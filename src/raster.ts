@@ -1,5 +1,5 @@
-import { COLS, PRI, ROWS } from "./constants";
-import { laneBounds } from "./shapes";
+import { COLS, MAX_COLS, MAX_ROWS, PRI, ROWS } from "./constants";
+import { contentExtent, laneBounds } from "./shapes";
 import type {
 	ArrowShape,
 	BoxShape,
@@ -65,9 +65,15 @@ export function rasterize(shapes: Shape[], cols = COLS, rows = ROWS): Raster {
 
 	// Groups first so their frames sit beneath everything else.
 	for (const s of shapes) if (s.type === "group") drawGroup(s, put);
+	// Route all arrows up front against shared state so dense diagrams keep
+	// distinct corridors and labels land on collision-free cells.
+	const routed = shapes.some((s) => s.type === "arrow")
+		? routeAll(shapes)
+		: undefined;
 	for (const s of shapes) {
 		if (s.type === "box") drawBox(s, put);
-		else if (s.type === "arrow") drawArrow(s, shapes, put, ghost, busy);
+		else if (s.type === "arrow")
+			drawArrow(s, shapes, put, ghost, busy, routed?.get(s.id));
 		else if (s.type === "text") drawText(s, put);
 	}
 	return { ch, id, pri, cols, rows };
@@ -194,8 +200,9 @@ function drawArrow(
 	put: Put,
 	ghost: (x: number, y: number, sid: number) => void,
 	busy: (x: number, y: number) => boolean,
+	routed?: RoutedArrow,
 ): void {
-	const { pts, into1, into2 } = resolveArrow(s, shapes);
+	const { pts, into1, into2 } = routed ?? resolveArrow(s, shapes);
 	if (pts.length < 2) {
 		put(pts[0].x, pts[0].y, ">", s.id, PRI.head);
 		return;
@@ -248,14 +255,16 @@ function drawArrow(
 	}
 
 	if (s.text) {
-		const mid = pathMidpoint(pts);
+		const mid = routed?.label ?? pathMidpoint(pts);
 		s.text.split("\n").forEach((line, li) => {
 			const x0 = mid.x - (line.length >> 1);
 			const y0 = mid.y + li;
-			put(x0 - 1, y0, " ", s.id, PRI.text);
+			// Padding spaces separate the label from its own line but must
+			// never block or erase a foreign line: line priority, not text.
+			put(x0 - 1, y0, " ", s.id, PRI.line);
 			for (let k = 0; k < line.length; k++)
 				put(x0 + k, y0, line[k], s.id, PRI.text);
-			put(x0 + line.length, y0, " ", s.id, PRI.text);
+			put(x0 + line.length, y0, " ", s.id, PRI.line);
 		});
 	}
 }
@@ -460,6 +469,40 @@ export interface ResolvedArrow {
 	pts: Point[];
 	into1: string | null;
 	into2: string | null;
+	/** Final route still overdraws a box — no clean route existed. */
+	dirty?: boolean;
+	/** Cells shared same-axis with earlier-routed arrows (ctx runs only). */
+	rails?: number;
+}
+
+/** Shared per-raster routing state: cells taken by earlier arrows/labels. */
+export interface RouteCtx {
+	/** packed cell → axis bits (1 horizontal, 2 vertical) of routed lines */
+	lines: Map<number, number>;
+	/** cells reserved by placed arrow labels (incl. their padding spaces) */
+	labels: Set<number>;
+	/** static occupancy: box cells, group frames, text shapes */
+	busy: (x: number, y: number) => boolean;
+}
+
+/** Packed cell key; stride comfortably beyond MAX_COLS plus route slack. */
+const cellKey = (x: number, y: number): number => y * 4096 + x;
+
+/** Visit every cell of an orthogonal path with its segment axis bit. */
+function walkPath(
+	pts: Point[],
+	fn: (x: number, y: number, axis: number) => void,
+): void {
+	for (let i = 0; i < pts.length - 1; i++) {
+		const a = pts[i],
+			b = pts[i + 1];
+		const axis = a.y === b.y ? 1 : 2;
+		const dx = Math.sign(b.x - a.x),
+			dy = Math.sign(b.y - a.y);
+		for (let x = a.x, y = a.y; x !== b.x || y !== b.y; x += dx, y += dy)
+			fn(x, y, axis);
+		fn(b.x, b.y, axis);
+	}
 }
 
 /**
@@ -467,7 +510,11 @@ export interface ResolvedArrow {
  * Writes resolved anchors back into the arrow so a later detach
  * (e.g. deleting the box) keeps the endpoint where it last was.
  */
-export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
+export function resolveArrow(
+	a: ArrowShape,
+	shapes: Shape[],
+	ctx?: RouteCtx,
+): ResolvedArrow {
 	const boxOf = (id: number | null): BoxShape | null => {
 		if (id == null) return null;
 		const s = shapes.find((sh) => sh.id === id);
@@ -678,8 +725,28 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
 				Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
 		return t;
 	};
-	/** Escape-stub routing: shortest candidate whose segments cross no box. */
-	const routeAvoiding = (): Point[] => {
+	/**
+	 * Same-axis overlap with earlier arrows (and their labels) — the cost
+	 * that keeps dense diagrams from merging arrows into shared rails.
+	 * Perpendicular crossings stay free; they render as junctions.
+	 */
+	const overlapCost = (route: Point[]): number => {
+		if (!ctx) return 0;
+		let cost = 0;
+		walkPath(route, (x, y, axis) => {
+			const k = cellKey(x, y);
+			const bits = ctx.lines.get(k);
+			if (bits !== undefined && (bits & axis) !== 0) cost += 8;
+			if (ctx.labels.has(k)) cost += 10;
+		});
+		return cost;
+	};
+	/**
+	 * Escape-stub routing: cheapest candidate — box-cleanliness is a hard
+	 * filter, length plus rail/label overlap the soft cost. `extra` slots
+	 * the legacy route in as the first (tie-winning) candidate.
+	 */
+	const routeBest = (extra: Point[] | null): Point[] => {
 		const outPt = (p: Point, side: Side | null, k: number): Point =>
 			side === "right"
 				? { x: p.x + k, y: p.y }
@@ -737,10 +804,11 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
 					p2,
 				]);
 		}
+		if (extra) candidates.unshift(extra);
 		const usable = candidates.filter(segsClean);
-		return (usable.length ? usable : candidates).reduce((best, c) =>
-			pathLen(c) < pathLen(best) ? c : best,
-		);
+		const pool = usable.length ? usable : candidates;
+		const score = (c: Point[]): number => pathLen(c) + overlapCost(c);
+		return pool.reduce((best, c) => (score(c) < score(best) ? c : best));
 	};
 	const finalize = (route: Point[]): ResolvedArrow => {
 		const out: Point[] = [route[0]];
@@ -756,17 +824,25 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
 			if ((a0.x === m.x && m.x === b0.x) || (a0.y === m.y && m.y === b0.y))
 				out.splice(i, 1);
 		}
+		let rails = 0;
+		if (ctx)
+			walkPath(out, (x, y, axis) => {
+				const bits = ctx.lines.get(cellKey(x, y));
+				if (bits !== undefined && (bits & axis) !== 0) rails++;
+			});
 		return {
 			pts: out,
 			into1: side1 ? INTO_HEAD[side1] : null,
 			into2: side2 ? INTO_HEAD[side2] : null,
+			dirty: !segsClean(out),
+			rails,
 		};
 	};
 
 	// Pinned sides can face AWAY from the other endpoint; the legacy branches
-	// below assume facing anchors — pinned arrows always take the avoiding
-	// stub router.
-	if (pin1 || pin2) return finalize(routeAvoiding());
+	// below assume facing anchors — pinned arrows always take the candidate
+	// router.
+	if (pin1 || pin2) return finalize(routeBest(null));
 
 	let pts: Point[];
 	if (ax1 === "h" && ax2 === "h") {
@@ -836,18 +912,115 @@ export function resolveArrow(a: ArrowShape, shapes: Shape[]): ResolvedArrow {
 		}
 	}
 
-	// Legacy routes stay exactly as they are when clean; only routes that
-	// overdraw a box (endpoint or bystander) take the avoiding router.
-	if ((b1 || b2) && !segsClean(pts)) return finalize(routeAvoiding());
+	// Legacy routes stay exactly as they are when clean; routes that overdraw
+	// a box (endpoint or bystander) or ride an earlier arrow's rail take the
+	// candidate router instead.
+	if ((b1 || b2) && !(segsClean(pts) && overlapCost(pts) === 0))
+		return finalize(routeBest(segsClean(pts) ? pts : null));
+	return finalize(pts);
+}
 
-	const out: Point[] = [pts[0]];
-	for (let i = 1; i < pts.length; i++) {
-		const last = out[out.length - 1];
-		if (pts[i].x !== last.x || pts[i].y !== last.y) out.push(pts[i]);
-	}
-	return {
-		pts: out,
-		into1: side1 ? INTO_HEAD[side1] : null,
-		into2: side2 ? INTO_HEAD[side2] : null,
+/** A routed arrow plus its placed label, ready to draw. */
+export interface RoutedArrow extends ResolvedArrow {
+	/** Label anchor (pathMidpoint semantics); null when the arrow has no text. */
+	label: Point | null;
+	/** No collision-free spot existed; label fell back to the midpoint. */
+	squeezed: boolean;
+}
+
+/**
+ * Slide a label along its arrow to the nearest spot (walking distance from
+ * the path midpoint) where no cell under the label — text plus one padding
+ * space each side, extra lines below — collides with foreign content.
+ * Falls back to the plain midpoint when nothing fits.
+ */
+export function placeLabel(
+	text: string,
+	pts: Point[],
+	ctx: RouteCtx,
+): { at: Point; clean: boolean } {
+	const lines = text.split("\n");
+	const cells: Point[] = [];
+	const own = new Set<number>();
+	walkPath(pts, (x, y) => {
+		const last = cells[cells.length - 1];
+		if (!last || last.x !== x || last.y !== y) cells.push({ x, y });
+		own.add(cellKey(x, y));
+	});
+	const fits = (mid: Point): boolean => {
+		for (let li = 0; li < lines.length; li++) {
+			const y = mid.y + li;
+			const x0 = mid.x - (lines[li].length >> 1);
+			for (let x = x0 - 1; x <= x0 + lines[li].length; x++) {
+				if (x < 0 || y < 0) return false;
+				const k = cellKey(x, y);
+				// Static content and reserved labels veto even the arrow's own
+				// cells — the line may pass under them, the label may not.
+				if (ctx.busy(x, y) || ctx.labels.has(k)) return false;
+				if (!own.has(k) && ctx.lines.has(k)) return false;
+			}
+		}
+		return true;
 	};
+	// Center-out along the walked path: index (cells.length−1)>>1 IS the
+	// pathMidpoint cell, so clean midpoints keep today's placement.
+	const midIdx = (cells.length - 1) >> 1;
+	const reach = Math.max(midIdx, cells.length - 1 - midIdx);
+	for (let d = 0; d <= reach; d++)
+		for (const i of d ? [midIdx - d, midIdx + d] : [midIdx]) {
+			const c = cells[i];
+			if (c && fits(c)) return { at: c, clean: true };
+		}
+	return { at: pathMidpoint(pts), clean: false };
+}
+
+/**
+ * Route every arrow against shared state — earlier arrows' cells and labels
+ * become soft obstacles for later ones — and place each label. rasterize
+ * draws from this; lint reads the diagnostics.
+ */
+export function routeAll(shapes: Shape[]): Map<number, RoutedArrow> {
+	const out = new Map<number, RoutedArrow>();
+	const arrows = shapes.filter((s): s is ArrowShape => s.type === "arrow");
+	if (!arrows.length) return out;
+	// Static occupancy comes from a raster of the non-arrow shapes — exact
+	// group frames, lane bands, and box/text cells without duplicating the
+	// draw geometry. No arrows in it, so no recursion.
+	const statics = shapes.filter((s) => s.type !== "arrow");
+	const ext = contentExtent(shapes);
+	const cols = Math.min(MAX_COLS, ext.x + 16);
+	const rows = Math.min(MAX_ROWS, ext.y + 16);
+	const sr = rasterize(statics, cols, rows);
+	const ctx: RouteCtx = {
+		lines: new Map(),
+		labels: new Set(),
+		busy: (x, y) =>
+			x >= 0 && y >= 0 && x < cols && y < rows && sr.pri[y * cols + x] > 0,
+	};
+	// Pass 1: routes. Later arrows dodge earlier corridors (soft cost).
+	for (const a of arrows) {
+		const res = resolveArrow(a, shapes, ctx);
+		walkPath(res.pts, (x, y, axis) => {
+			const k = cellKey(x, y);
+			ctx.lines.set(k, (ctx.lines.get(k) ?? 0) | axis);
+		});
+		out.set(a.id, { ...res, label: null, squeezed: false });
+	}
+	// Pass 2: labels, once EVERY line is known — a label placed early must
+	// not sit (or drop its padding) on an arrow routed after it.
+	for (const a of arrows) {
+		if (!a.text) continue;
+		const r = out.get(a.id);
+		if (!r) continue;
+		const placed = placeLabel(a.text, r.pts, ctx);
+		r.label = placed.at;
+		r.squeezed = !placed.clean;
+		a.text.split("\n").forEach((line, li) => {
+			const y = placed.at.y + li;
+			const x0 = placed.at.x - (line.length >> 1);
+			for (let x = x0 - 1; x <= x0 + line.length; x++)
+				ctx.labels.add(cellKey(x, y));
+		});
+	}
+	return out;
 }

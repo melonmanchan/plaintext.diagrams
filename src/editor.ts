@@ -1,5 +1,5 @@
 import { CH, CW, FONT, MAX_COLS, MAX_ROWS } from "./constants";
-import { pathMidpoint, resolveArrow } from "./raster";
+import { pathMidpoint, routeAll } from "./raster";
 import { ctx, render } from "./render";
 import {
 	boxMinSize,
@@ -72,7 +72,12 @@ export function startEdit(s: Shape, seed?: string, lane?: number): void {
 	} else {
 		const at =
 			s.type === "arrow"
-				? pathMidpoint(resolveArrow(s, app.doc.shapes).pts)
+				? (() => {
+						// Anchor where the label actually renders: the routed,
+						// collision-avoiding spot when one exists.
+						const r = routeAll(app.doc.shapes).get(s.id);
+						return r ? (r.label ?? pathMidpoint(r.pts)) : { x: s.x1, y: s.y1 };
+					})()
 				: s.type === "group"
 					? app.editingLane != null
 						? {
