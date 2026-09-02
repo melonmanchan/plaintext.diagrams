@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_COLS } from "../src/constants";
 import { lintShapes } from "../src/lint";
 import { pathMidpoint, rasterize, routeAll } from "../src/raster";
 import type { ArrowShape, BoxShape, Shape, TextShape } from "../src/types";
@@ -170,5 +171,59 @@ describe("lintShapes", () => {
 			arrow(3, { box1: 1, box2: 2, text: "HTTP" }),
 		];
 		expect(lintShapes(shapes)).toEqual([]);
+	});
+});
+
+describe("review fixes", () => {
+	it("lintShapes does not mutate the caller's arrows", () => {
+		const shapes: Shape[] = [
+			box(1, 0, 0, 8, 3, "A"),
+			box(2, 30, 0, 8, 3, "B"),
+			arrow(3, { box1: 1, box2: 2 }),
+		];
+		lintShapes(shapes);
+		const ar = must(shapes.find((s) => s.id === 3));
+		expect(ar.type === "arrow" && ar.x1).toBe(0);
+		expect(ar.type === "arrow" && ar.y1).toBe(0);
+	});
+
+	it("fallback label padding never erases an earlier foreign line", () => {
+		const shapes: Shape[] = [
+			arrow(1, { x1: 0, y1: 4, x2: 20, y2: 4 }),
+			arrow(2, { x1: 6, y1: 3, x2: 14, y2: 3, text: "ab\ncd" }),
+		];
+		const r = must(routeAll(shapes).get(2));
+		expect(r.squeezed).toBe(true); // second label row has no clean spot
+		const g = rasterize(shapes, 30, 10);
+		// label text legitimately overprints the foreign line …
+		expect(g.ch[4 * 30 + 9]).toBe("c");
+		expect(g.ch[4 * 30 + 10]).toBe("d");
+		// … but its padding spaces must not sever it
+		expect(g.ch[4 * 30 + 8]).toBe("-");
+		expect(g.ch[4 * 30 + 11]).toBe("-");
+	});
+
+	it("a single mutually-shared bend cell counts as one rail", () => {
+		const shapes: Shape[] = [
+			arrow(1, { x1: 0, y1: 5, x2: 5, y2: 0 }),
+			arrow(2, { x1: 10, y1: 5, x2: 5, y2: 10 }),
+		];
+		const r = must(routeAll(shapes).get(2));
+		expect(r.rails).toBe(1);
+		expect(lintShapes(shapes).some((i) => i.code === "arrow-rail")).toBe(false);
+	});
+
+	it("labels clipped by the world cap report squeezed, not clean", () => {
+		const shapes: Shape[] = [
+			arrow(1, {
+				x1: MAX_COLS - 3,
+				y1: 2,
+				x2: MAX_COLS - 1,
+				y2: 2,
+				text: "verywide!",
+			}),
+		];
+		const r = must(routeAll(shapes).get(1));
+		expect(r.squeezed).toBe(true);
 	});
 });

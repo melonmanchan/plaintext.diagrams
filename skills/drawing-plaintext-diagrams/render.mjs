@@ -94,6 +94,8 @@ function rasterize(shapes, cols = COLS, rows = ROWS) {
       return;
     const i = y * cols + x;
     if (p === PRI.line && pri[i] === PRI.line) {
+      if (c === " " && id[i] !== sid)
+        return;
       if (ch[i] === "+") {
         id[i] = sid;
         return;
@@ -663,19 +665,20 @@ function resolveArrow(a, shapes, ctx) {
       if (a0.x === m.x && m.x === b0.x || a0.y === m.y && m.y === b0.y)
         out.splice(i, 1);
     }
-    let rails = 0;
+    const railCells = new Set;
     if (ctx)
       walkPath(out, (x, y, axis) => {
-        const bits = ctx.lines.get(cellKey(x, y));
+        const k = cellKey(x, y);
+        const bits = ctx.lines.get(k);
         if (bits !== undefined && (bits & axis) !== 0)
-          rails++;
+          railCells.add(k);
       });
     return {
       pts: out,
       into1: side1 ? INTO_HEAD[side1] : null,
       into2: side2 ? INTO_HEAD[side2] : null,
       dirty: !segsClean(out),
-      rails
+      rails: railCells.size
     };
   };
   if (pin1 || pin2)
@@ -746,7 +749,7 @@ function placeLabel(text, pts, ctx) {
       const y = mid.y + li;
       const x0 = mid.x - (lines[li].length >> 1);
       for (let x = x0 - 1;x <= x0 + lines[li].length; x++) {
-        if (x < 0 || y < 0)
+        if (x < 0 || y < 0 || x >= MAX_COLS || y >= MAX_ROWS)
           return false;
         const k = cellKey(x, y);
         if (ctx.busy(x, y) || ctx.labels.has(k))
@@ -1008,7 +1011,7 @@ function lintShapes(shapes) {
           msg: `${tag(a, "group")} and ${tag(b, "group")} overlap without nesting — nest one fully inside the other or separate them`
         });
     }
-  const routed = routeAll(shapes);
+  const routed = routeAll(shapes.map((s) => s.type === "arrow" ? { ...s } : s));
   const endName = (id) => {
     const b = id != null ? boxes.find((x) => x.id === id) : undefined;
     return b ? tag(b, "box") : "a free endpoint";

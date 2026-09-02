@@ -30,6 +30,9 @@ export function rasterize(shapes: Shape[], cols = COLS, rows = ROWS): Raster {
 		const i = y * cols + x;
 		if (p === PRI.line && pri[i] === PRI.line) {
 			// line-over-line: keep/create junctions
+			// A padding space never erases another shape's line — only its
+			// own arrow may blank cells for the ` label ` gap.
+			if (c === " " && id[i] !== sid) return;
 			if (ch[i] === "+") {
 				id[i] = sid;
 				return;
@@ -824,18 +827,21 @@ export function resolveArrow(
 			if ((a0.x === m.x && m.x === b0.x) || (a0.y === m.y && m.y === b0.y))
 				out.splice(i, 1);
 		}
-		let rails = 0;
+		// Distinct cells shared same-axis with earlier arrows: a bend cell is
+		// visited once per adjoining segment, so count keys, not visits.
+		const railCells = new Set<number>();
 		if (ctx)
 			walkPath(out, (x, y, axis) => {
-				const bits = ctx.lines.get(cellKey(x, y));
-				if (bits !== undefined && (bits & axis) !== 0) rails++;
+				const k = cellKey(x, y);
+				const bits = ctx.lines.get(k);
+				if (bits !== undefined && (bits & axis) !== 0) railCells.add(k);
 			});
 		return {
 			pts: out,
 			into1: side1 ? INTO_HEAD[side1] : null,
 			into2: side2 ? INTO_HEAD[side2] : null,
 			dirty: !segsClean(out),
-			rails,
+			rails: railCells.size,
 		};
 	};
 
@@ -952,7 +958,9 @@ export function placeLabel(
 			const y = mid.y + li;
 			const x0 = mid.x - (lines[li].length >> 1);
 			for (let x = x0 - 1; x <= x0 + lines[li].length; x++) {
-				if (x < 0 || y < 0) return false;
+				// Off-world cells would be clipped by rasterization — treat
+				// them as collisions so the label reports squeezed instead.
+				if (x < 0 || y < 0 || x >= MAX_COLS || y >= MAX_ROWS) return false;
 				const k = cellKey(x, y);
 				// Static content and reserved labels veto even the arrow's own
 				// cells — the line may pass under them, the label may not.

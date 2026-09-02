@@ -83,7 +83,11 @@ export function lintShapes(shapes: Shape[]): LintIssue[] {
 				});
 		}
 
-	const routed = routeAll(shapes);
+	// resolveArrow writes resolved anchors back into attached arrows; lint
+	// must stay pure, so route shallow clones of the arrows instead.
+	const routed = routeAll(
+		shapes.map((s) => (s.type === "arrow" ? { ...s } : s)),
+	);
 	const endName = (id: number | null): string => {
 		const b = id != null ? boxes.find((x) => x.id === id) : undefined;
 		return b ? tag(b, "box") : "a free endpoint";
