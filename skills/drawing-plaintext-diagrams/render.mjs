@@ -74,6 +74,14 @@ function contentExtent(shapes) {
   }
   return { x, y };
 }
+function insideGroup(s, g) {
+  const inRect = (x, y) => x > g.x && x < g.x + g.w - 1 && y > g.y && y < g.y + g.h - 1;
+  if (s.type === "box" || s.type === "group")
+    return s.id !== g.id && inRect(s.x, s.y) && inRect(s.x + s.w - 1, s.y + s.h - 1);
+  if (s.type === "text")
+    return inRect(s.x, s.y);
+  return (s.box1 != null || inRect(s.x1, s.y1)) && (s.box2 != null || inRect(s.x2, s.y2));
+}
 
 // src/raster.ts
 function rasterize(shapes, cols = COLS, rows = ROWS) {
@@ -86,6 +94,8 @@ function rasterize(shapes, cols = COLS, rows = ROWS) {
       return;
     const i = y * cols + x;
     if (p === PRI.line && pri[i] === PRI.line) {
+      if (c === " " && id[i] !== sid)
+        return;
       if (ch[i] === "+") {
         id[i] = sid;
         return;
@@ -118,11 +128,12 @@ function rasterize(shapes, cols = COLS, rows = ROWS) {
   for (const s of shapes)
     if (s.type === "group")
       drawGroup(s, put);
+  const routed = shapes.some((s) => s.type === "arrow") ? routeAll(shapes) : undefined;
   for (const s of shapes) {
     if (s.type === "box")
       drawBox(s, put);
     else if (s.type === "arrow")
-      drawArrow(s, shapes, put, ghost, busy);
+      drawArrow(s, shapes, put, ghost, busy, routed?.get(s.id));
     else if (s.type === "text")
       drawText(s, put);
   }
@@ -234,8 +245,8 @@ var INTO_HEAD = {
   top: "v",
   bottom: "^"
 };
-function drawArrow(s, shapes, put, ghost, busy) {
-  const { pts, into1, into2 } = resolveArrow(s, shapes);
+function drawArrow(s, shapes, put, ghost, busy, routed) {
+  const { pts, into1, into2 } = routed ?? resolveArrow(s, shapes);
   if (pts.length < 2) {
     put(pts[0].x, pts[0].y, ">", s.id, PRI.head);
     return;
@@ -273,15 +284,15 @@ function drawArrow(s, shapes, put, ghost, busy) {
     put(b0.x, b0.y, tail, s.id, PRI.head);
   }
   if (s.text) {
-    const mid = pathMidpoint(pts);
+    const mid = routed?.label ?? pathMidpoint(pts);
     s.text.split(`
 `).forEach((line, li) => {
       const x0 = mid.x - (line.length >> 1);
       const y0 = mid.y + li;
-      put(x0 - 1, y0, " ", s.id, PRI.text);
+      put(x0 - 1, y0, " ", s.id, PRI.line);
       for (let k = 0;k < line.length; k++)
         put(x0 + k, y0, line[k], s.id, PRI.text);
-      put(x0 + line.length, y0, " ", s.id, PRI.text);
+      put(x0 + line.length, y0, " ", s.id, PRI.line);
     });
   }
 }
@@ -434,7 +445,18 @@ function anchorFor(b, o, side, slot, off) {
   const cross = side === "bottom" ? b.y + b.h - 1 - inset : b.y + inset;
   return { ...anchorOn(b, oside, cross), side: oside };
 }
-function resolveArrow(a, shapes) {
+var cellKey = (x, y) => y * 4096 + x;
+function walkPath(pts, fn) {
+  for (let i = 0;i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const axis = a.y === b.y ? 1 : 2;
+    const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y);
+    for (let { x, y } = a;x !== b.x || y !== b.y; x += dx, y += dy)
+      fn(x, y, axis);
+    fn(b.x, b.y, axis);
+  }
+}
+function resolveArrow(a, shapes, ctx) {
   const boxOf = (id) => {
     if (id == null)
       return null;
@@ -571,7 +593,21 @@ function resolveArrow(a, shapes) {
       t += Math.abs(pts2[i + 1].x - pts2[i].x) + Math.abs(pts2[i + 1].y - pts2[i].y);
     return t;
   };
-  const routeAvoiding = () => {
+  const overlapCost = (route) => {
+    if (!ctx)
+      return 0;
+    let cost = 0;
+    walkPath(route, (x, y, axis) => {
+      const k = cellKey(x, y);
+      const bits = ctx.lines.get(k);
+      if (bits !== undefined && (bits & axis) !== 0)
+        cost += 8;
+      if (ctx.labels.has(k))
+        cost += 10;
+    });
+    return cost;
+  };
+  const routeBest = (extra) => {
     const outPt = (p, side, k) => side === "right" ? { x: p.x + k, y: p.y } : side === "left" ? { x: Math.max(0, p.x - k), y: p.y } : side === "bottom" ? { x: p.x, y: p.y + k } : side === "top" ? { x: p.x, y: Math.max(0, p.y - k) } : p;
     const e1 = outPt(p1, side1, 2 + Math.abs(off1));
     const e2 = outPt(p2, side2, 2 + Math.abs(off2));
@@ -610,29 +646,43 @@ function resolveArrow(a, shapes) {
           p2
         ]);
     }
+    if (extra)
+      candidates.unshift(extra);
     const usable = candidates.filter(segsClean);
-    return (usable.length ? usable : candidates).reduce((best, c) => pathLen(c) < pathLen(best) ? c : best);
+    const pool = usable.length ? usable : candidates;
+    const score = (c) => pathLen(c) + overlapCost(c);
+    return pool.reduce((best, c) => score(c) < score(best) ? c : best);
   };
   const finalize = (route) => {
-    const out2 = [route[0]];
+    const out = [route[0]];
     for (let i = 1;i < route.length; i++) {
-      const last = out2[out2.length - 1];
+      const last = out[out.length - 1];
       if (route[i].x !== last.x || route[i].y !== last.y)
-        out2.push(route[i]);
+        out.push(route[i]);
     }
-    for (let i = out2.length - 2;i > 0; i--) {
-      const a0 = out2[i - 1], m = out2[i], b0 = out2[i + 1];
+    for (let i = out.length - 2;i > 0; i--) {
+      const a0 = out[i - 1], m = out[i], b0 = out[i + 1];
       if (a0.x === m.x && m.x === b0.x || a0.y === m.y && m.y === b0.y)
-        out2.splice(i, 1);
+        out.splice(i, 1);
     }
+    const railCells = new Set;
+    if (ctx)
+      walkPath(out, (x, y, axis) => {
+        const k = cellKey(x, y);
+        const bits = ctx.lines.get(k);
+        if (bits !== undefined && (bits & axis) !== 0)
+          railCells.add(k);
+      });
     return {
-      pts: out2,
+      pts: out,
       into1: side1 ? INTO_HEAD[side1] : null,
-      into2: side2 ? INTO_HEAD[side2] : null
+      into2: side2 ? INTO_HEAD[side2] : null,
+      dirty: !segsClean(out),
+      rails: railCells.size
     };
   };
   if (pin1 || pin2)
-    return finalize(routeAvoiding());
+    return finalize(routeBest(null));
   let pts;
   if (ax1 === "h" && ax2 === "h") {
     if (dy === 0 && !(side1 != null && side1 === side2))
@@ -679,19 +729,88 @@ function resolveArrow(a, shapes) {
       pts = [p1, { x: p1.x, y: p2.y }, p2];
     }
   }
-  if ((b1 || b2) && !segsClean(pts))
-    return finalize(routeAvoiding());
-  const out = [pts[0]];
-  for (let i = 1;i < pts.length; i++) {
-    const last = out[out.length - 1];
-    if (pts[i].x !== last.x || pts[i].y !== last.y)
-      out.push(pts[i]);
-  }
-  return {
-    pts: out,
-    into1: side1 ? INTO_HEAD[side1] : null,
-    into2: side2 ? INTO_HEAD[side2] : null
+  if ((b1 || b2) && !(segsClean(pts) && overlapCost(pts) === 0))
+    return finalize(routeBest(segsClean(pts) ? pts : null));
+  return finalize(pts);
+}
+function placeLabel(text, pts, ctx) {
+  const lines = text.split(`
+`);
+  const cells = [];
+  const own = new Set;
+  walkPath(pts, (x, y) => {
+    const last = cells[cells.length - 1];
+    if (!last || last.x !== x || last.y !== y)
+      cells.push({ x, y });
+    own.add(cellKey(x, y));
+  });
+  const fits = (mid) => {
+    for (let li = 0;li < lines.length; li++) {
+      const y = mid.y + li;
+      const x0 = mid.x - (lines[li].length >> 1);
+      for (let x = x0 - 1;x <= x0 + lines[li].length; x++) {
+        if (x < 0 || y < 0 || x >= MAX_COLS || y >= MAX_ROWS)
+          return false;
+        const k = cellKey(x, y);
+        if (ctx.busy(x, y) || ctx.labels.has(k))
+          return false;
+        if (!own.has(k) && ctx.lines.has(k))
+          return false;
+      }
+    }
+    return true;
   };
+  const midIdx = cells.length - 1 >> 1;
+  const reach = Math.max(midIdx, cells.length - 1 - midIdx);
+  for (let d = 0;d <= reach; d++)
+    for (const i of d ? [midIdx - d, midIdx + d] : [midIdx]) {
+      const c = cells[i];
+      if (c && fits(c))
+        return { at: c, clean: true };
+    }
+  return { at: pathMidpoint(pts), clean: false };
+}
+function routeAll(shapes) {
+  const out = new Map;
+  const arrows = shapes.filter((s) => s.type === "arrow");
+  if (!arrows.length)
+    return out;
+  const statics = shapes.filter((s) => s.type !== "arrow");
+  const ext = contentExtent(shapes);
+  const cols = Math.min(MAX_COLS, ext.x + 16);
+  const rows = Math.min(MAX_ROWS, ext.y + 16);
+  const sr = rasterize(statics, cols, rows);
+  const ctx = {
+    lines: new Map,
+    labels: new Set,
+    busy: (x, y) => x >= 0 && y >= 0 && x < cols && y < rows && sr.pri[y * cols + x] > 0
+  };
+  for (const a of arrows) {
+    const res = resolveArrow(a, shapes, ctx);
+    walkPath(res.pts, (x, y, axis) => {
+      const k = cellKey(x, y);
+      ctx.lines.set(k, (ctx.lines.get(k) ?? 0) | axis);
+    });
+    out.set(a.id, { ...res, label: null, squeezed: false });
+  }
+  for (const a of arrows) {
+    if (!a.text)
+      continue;
+    const r = out.get(a.id);
+    if (!r)
+      continue;
+    const placed = placeLabel(a.text, r.pts, ctx);
+    r.label = placed.at;
+    r.squeezed = !placed.clean;
+    a.text.split(`
+`).forEach((line, li) => {
+      const y = placed.at.y + li;
+      const x0 = placed.at.x - (line.length >> 1);
+      for (let x = x0 - 1;x <= x0 + line.length; x++)
+        ctx.labels.add(cellKey(x, y));
+    });
+  }
+  return out;
 }
 
 // src/export.ts
@@ -850,6 +969,81 @@ function parseShapesJson(text) {
 }
 var MAX_SHARE_BYTES = 1 << 22;
 
+// src/lint.ts
+function tag(s, kind) {
+  const t = s.text?.split(`
+`)[0].trim();
+  return t ? `${kind} '${t}'` : `${kind} #${s.id}`;
+}
+var intersects = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+var clearance = (a, b) => Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w), b.y - (a.y + a.h), a.y - (b.y + b.h));
+function lintShapes(shapes) {
+  const issues = [];
+  const boxes = shapes.filter((s) => s.type === "box");
+  const groups = shapes.filter((s) => s.type === "group");
+  for (let i = 0;i < boxes.length; i++)
+    for (let j = i + 1;j < boxes.length; j++)
+      if (intersects(boxes[i], boxes[j]))
+        issues.push({
+          code: "box-overlap",
+          msg: `${tag(boxes[i], "box")} and ${tag(boxes[j], "box")} overlap — separate them`
+        });
+  for (const b of boxes)
+    for (const g of groups) {
+      if (intersects(b, g)) {
+        if (!insideGroup(b, g))
+          issues.push({
+            code: "group-crossing",
+            msg: `${tag(b, "box")} crosses the frame of ${tag(g, "group")} — move it fully inside (≥1 cell from the border) or ≥2 cells outside`
+          });
+      } else if (clearance(b, g) < 2)
+        issues.push({
+          code: "group-hug",
+          msg: `${tag(b, "box")} sits within 2 cells of ${tag(g, "group")}'s frame — keep ≥2 cells of clearance outside a frame it doesn't belong to`
+        });
+    }
+  for (let i = 0;i < groups.length; i++)
+    for (let j = i + 1;j < groups.length; j++) {
+      const a = groups[i], b = groups[j];
+      if (intersects(a, b) && !insideGroup(a, b) && !insideGroup(b, a))
+        issues.push({
+          code: "group-overlap",
+          msg: `${tag(a, "group")} and ${tag(b, "group")} overlap without nesting — nest one fully inside the other or separate them`
+        });
+    }
+  const routed = routeAll(shapes.map((s) => s.type === "arrow" ? { ...s } : s));
+  const endName = (id) => {
+    const b = id != null ? boxes.find((x) => x.id === id) : undefined;
+    return b ? tag(b, "box") : "a free endpoint";
+  };
+  for (const a of shapes.filter((s) => s.type === "arrow")) {
+    const r = routed.get(a.id);
+    if (!r)
+      continue;
+    const ends = `${endName(a.box1)} → ${endName(a.box2)}`;
+    if (r.dirty)
+      issues.push({
+        code: "arrow-overdraw",
+        msg: `arrow #${a.id} (${ends}) overdraws a box — no clear route exists; move the endpoints apart or clear a corridor between them`
+      });
+    if ((r.rails ?? 0) > 1)
+      issues.push({
+        code: "arrow-rail",
+        msg: `arrow #${a.id} (${ends}) rides on top of another arrow for ${r.rails} cells — give each arrow its own corridor`
+      });
+    if (r.squeezed && a.text) {
+      const need = Math.max(...a.text.split(`
+`).map((l) => l.length)) + 4;
+      issues.push({
+        code: "label-squeezed",
+        msg: `label '${a.text.split(`
+`)[0]}' of arrow #${a.id} (${ends}) has no collision-free spot — leave a clear run of ≥${need} cells along the arrow`
+      });
+    }
+  }
+  return issues;
+}
+
 // scripts/render-cli.ts
 function fail(msg) {
   process.stderr.write(`error: ${msg}
@@ -872,6 +1066,13 @@ if (!out)
   fail("diagram rendered empty — no shapes with geometry");
 if (check)
   process.stderr.write(`JSON OK — ${shapes.length} shape(s)
+`);
+var issues = lintShapes(shapes);
+for (const it of issues)
+  process.stderr.write(`warning: ${it.msg}
+`);
+if (issues.length)
+  process.stderr.write(`${issues.length} layout warning(s) — adjust the JSON and re-render.
 `);
 process.stdout.write(`${out}
 `);

@@ -11,7 +11,7 @@ plaintext.diagrams (https://melonmanchan.github.io/plaintext.diagrams/) is a dia
 
 ## What to deliver
 
-**Default: deliver the shapes JSON itself.** The editor detects JSON on paste (clipboard starting with `[` or `{`), validates it, and imports losslessly — invalid JSON shows the first error in the hint bar. No tooling, no rendering step.
+**Default: deliver the shapes JSON itself.** The editor detects JSON on paste (clipboard starting with `[` or `{`), validates it, and imports losslessly — invalid JSON shows the first error in the hint bar. Before delivering, lint the layout once: `node render.mjs shapes.json > /dev/null` prints layout warnings on stderr (crowded labels, overlapping shapes, arrows without a clear route); fix the JSON and re-run until it is silent.
 
 **Render to text ONLY when the deliverable is the text itself** — a README, PR description, or code comment read outside the app — or when the user explicitly asks to see the rendered diagram:
 
@@ -19,7 +19,7 @@ plaintext.diagrams (https://melonmanchan.github.io/plaintext.diagrams/) is a dia
 node render.mjs shapes.json > diagram.txt   # render.mjs sits next to this file; bun works too
 ```
 
-The renderer validates the JSON (schema, ids, arrow references) and fails with a message when it's invalid — fix the JSON error and re-run. **Render ONCE**: do not iterate on coordinates to polish the drawing; layout is adjusted in the editor, not by re-rolling geometry. The rendered text is also paste-importable.
+The renderer validates the JSON (schema, ids, arrow references) and fails with a message when it's invalid — fix the JSON error and re-run. It then reports **layout warnings** on stderr; each names the offending shapes and the fix (e.g. `label 'HTTP' of arrow #3 has no collision-free spot — leave a clear run of ≥8 cells`). **Iterate on warnings, not on looks**: apply exactly what the warnings say, re-render, and stop when stderr is silent (normally 1-2 passes). Do NOT re-roll coordinates to polish a warning-free drawing; fine layout is adjusted in the editor. The rendered text is also paste-importable.
 
 ## Shape schema
 
@@ -35,6 +35,8 @@ A JSON array (or `{"shapes": [...]}`). Coordinates are character cells; `x` → 
 Free-floating arrows (no boxes): give `x1,y1,x2,y2` instead of `box1/box2`.
 
 ## Spacing rules (make first renders read well)
+
+The renderer absorbs mild crowding on its own — labels slide along their arrow to a collision-free spot, and arrows detour around boxes and each other's corridors. The rules below keep diagrams from needing those escapes; violations the renderer cannot absorb come back as warnings.
 
 - Leave **≥ 8 columns** between connected boxes when the arrow has a label (`── label ──▶` needs the run), ≥ 4 otherwise.
 - Leave **≥ 2 rows/columns** between any box and a group border it doesn't belong inside.
